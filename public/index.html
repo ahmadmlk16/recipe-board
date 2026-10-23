@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#eef1ea" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#131915" media="(prefers-color-scheme: dark)">
+<title>Recipe Board</title>
+<link rel="icon" href="/assets/icon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/app.css?v=1">
+</head>
+<body>
+<header class="top">
+  <div class="top-inner">
+    <a class="brand" href="/" aria-label="Recipe Board home">
+      <img src="/assets/icon.svg" alt="" width="30" height="30">
+      <span>Recipe Board</span>
+    </a>
+    <button class="btn btn-ghost" id="open-settings" type="button" hidden>Account</button>
+  </div>
+  <nav class="flow" aria-label="Board sections">
+    <a class="flow-step" href="#recipes" data-view="recipes">
+      <span class="flow-num">1</span><span class="flow-label">Recipes</span><span class="flow-count" id="count-recipes">0</span>
+    </a>
+    <span class="flow-arrow" aria-hidden="true"></span>
+    <a class="flow-step" href="#ingredients" data-view="ingredients">
+      <span class="flow-num">2</span><span class="flow-label">Ingredients</span><span class="flow-count" id="count-ingredients">0</span>
+    </a>
+    <span class="flow-arrow" aria-hidden="true"></span>
+    <a class="flow-step" href="#grocery" data-view="grocery">
+      <span class="flow-num">3</span><span class="flow-label">Grocery<span class="flow-long"> list</span></span><span class="flow-count" id="count-grocery">0</span>
+    </a>
+  </nav>
+</header>
+
+<main id="main">
+  <p class="loading" id="loading">Loading your recipes…</p>
+
+  <!-- 1. Recipes -->
+  <section class="view" id="view-recipes" hidden>
+    <div class="recipes-layout">
+      <aside class="recipe-list-col">
+        <div class="toolbar">
+          <label class="search">
+            <span class="sr-only">Search recipes</span>
+            <input id="recipe-search" type="search" placeholder="Search recipes or ingredients" autocomplete="off">
+          </label>
+          <button class="btn btn-primary" id="new-recipe" type="button">Add recipe</button>
+        </div>
+        <div id="recipe-cards" class="recipe-cards"></div>
+      </aside>
+      <article class="detail" id="detail" aria-live="polite"></article>
+    </div>
+  </section>
+
+  <!-- 2. Ingredients -->
+  <section class="view" id="view-ingredients" hidden>
+    <div class="view-head">
+      <div>
+        <h1>Ingredients</h1>
+        <p class="muted">Everything your recipes call for, by aisle. Tap a recipe chip to put that amount on the grocery list.</p>
+      </div>
+      <div class="toolbar">
+        <label class="search">
+          <span class="sr-only">Search ingredients</span>
+          <input id="ingredient-search" type="search" placeholder="Search ingredients" autocomplete="off">
+        </label>
+        <label class="select">
+          <span class="sr-only">Show ingredients for</span>
+          <select id="ingredient-recipe"><option value="">All recipes</option></select>
+        </label>
+      </div>
+    </div>
+    <div id="ingredient-groups"></div>
+  </section>
+
+  <!-- 3. Grocery list -->
+  <section class="view" id="view-grocery" hidden>
+    <div class="view-head">
+      <div>
+        <h1>Grocery list</h1>
+        <p class="muted" id="grocery-summary">Nothing to buy yet.</p>
+      </div>
+      <form class="add-item" id="add-item">
+        <label class="sr-only" for="new-item">Add an item</label>
+        <input id="new-item" placeholder="Add an item, e.g. 1 dozen eggs" autocomplete="off">
+        <button class="btn btn-primary" type="submit">Add</button>
+      </form>
+    </div>
+    <div id="grocery-groups"></div>
+    <div class="grocery-actions" id="grocery-actions" hidden>
+      <button class="btn" id="copy-list" type="button">Copy list</button>
+      <button class="btn" id="clear-bought" type="button">Remove ticked items</button>
+      <span class="confirm-wrap" id="clear-all-wrap">
+        <button class="btn btn-danger-ghost" id="clear-all" type="button">Clear list</button>
+      </span>
+    </div>
+  </section>
+</main>
+
+<!-- Add recipe: choose how -->
+<dialog class="sheet" id="add-dialog" aria-labelledby="add-title">
+  <form method="dialog" class="sheet-inner" id="add-form">
+    <div class="sheet-head">
+      <h2 id="add-title">Add a recipe</h2>
+      <button class="icon-btn" value="cancel" aria-label="Close">&times;</button>
+    </div>
+    <div class="add-tabs" role="tablist">
+      <button type="button" role="tab" class="add-tab" data-mode="link" aria-selected="true">From a link</button>
+      <button type="button" role="tab" class="add-tab" data-mode="paste" aria-selected="false">Paste text</button>
+      <button type="button" role="tab" class="add-tab" data-mode="generate" aria-selected="false">Ask AI</button>
+      <button type="button" role="tab" class="add-tab" data-mode="manual" aria-selected="false">Write it</button>
+    </div>
+    <div class="add-pane" data-pane="link">
+      <label class="field"><span>Recipe link</span>
+        <input id="ai-url" type="url" inputmode="url" placeholder="https://www.example.com/chicken-karahi" autocomplete="off">
+      </label>
+      <p class="hint">Most recipe sites work straight away. If a site hides its recipe, AI reads the page instead.</p>
+    </div>
+    <div class="add-pane" data-pane="paste" hidden>
+      <label class="field"><span>Recipe text</span>
+        <textarea id="ai-text" rows="9" placeholder="Paste a recipe from a message, a note or a photo caption. Ingredients and steps, in any format."></textarea>
+      </label>
+    </div>
+    <div class="add-pane" data-pane="generate" hidden>
+      <label class="field"><span>What would you like to cook?</span>
+        <textarea id="ai-prompt" rows="4" placeholder="Chicken karahi for 4, not too spicy&#10;Something with the spinach and paneer I already have&#10;High-protein breakfast under 400 calories"></textarea>
+      </label>
+    </div>
+    <div class="add-pane" data-pane="manual" hidden>
+      <p class="hint">Start with a blank recipe and type it in yourself.</p>
+    </div>
+    <p class="msg err" id="add-error" hidden></p>
+    <div class="sheet-foot">
+      <span class="hint" id="add-note">You can check and edit everything before it's saved.</span>
+      <button type="submit" class="btn btn-primary" id="add-go" value="go">Get recipe</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Account -->
+<dialog class="sheet" id="settings-dialog" aria-labelledby="settings-title">
+  <div class="sheet-inner">
+    <div class="sheet-head">
+      <h2 id="settings-title">Account</h2>
+      <button class="icon-btn" type="button" data-close aria-label="Close">&times;</button>
+    </div>
+    <p class="muted" id="signed-in-as"></p>
+
+    <h3>People who can use this board</h3>
+    <ul class="people" id="people"></ul>
+    <form class="stack" id="add-person">
+      <p class="hint">Give someone in your home their own login. Everyone shares the same recipes and grocery list.</p>
+      <div class="row2">
+        <label class="field"><span>Name</span><input name="name" required autocomplete="off"></label>
+        <label class="field"><span>Email</span><input name="email" type="email" required autocomplete="off"></label>
+      </div>
+      <label class="field"><span>Password <small>(at least 8 characters)</small></span><input name="password" type="text" minlength="8" required autocomplete="off"></label>
+      <p class="msg" hidden></p>
+      <button class="btn" type="submit">Add person</button>
+    </form>
+
+    <h3>Change your password</h3>
+    <form class="stack" id="change-password">
+      <label class="field"><span>Current password</span><input name="current" type="password" required autocomplete="current-password"></label>
+      <label class="field"><span>New password</span><input name="next" type="password" minlength="8" required autocomplete="new-password"></label>
+      <p class="msg" hidden></p>
+      <button class="btn" type="submit">Save password</button>
+    </form>
+
+    <div class="sheet-foot">
+      <span></span>
+      <button class="btn btn-danger-ghost" id="logout" type="button">Log out</button>
+    </div>
+  </div>
+</dialog>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script type="module" src="/assets/app.js?v=1"></script>
+</body>
+</html>

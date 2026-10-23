@@ -1,0 +1,9 @@
+{
+  "name": "Recipe Board",
+  "short_name": "Recipes",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#eef1ea",
+  "theme_color": "#2f6b4f",
+  "icons": [{ "src": "/assets/icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}

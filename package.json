@@ -1,0 +1,10 @@
+{
+  "name": "recipe-board",
+  "private": true,
+  "type": "module",
+  "description": "Recipes, ingredients and a grocery list that stay linked. Cloudflare Pages + D1, no build step.",
+  "scripts": {
+    "dev": "node dev/server.mjs",
+    "test": "node --test test/*.test.mjs"
+  }
+}

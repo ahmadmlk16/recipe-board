@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Log in · Recipe Board</title>
+<link rel="icon" href="/assets/icon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.webmanifest">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/app.css?v=1">
+</head>
+<body class="auth-page">
+<main class="auth-wrap">
+  <div class="brand auth-brand"><img src="/assets/icon.svg" alt="" width="36" height="36"><span>Recipe Board</span></div>
+
+  <form class="auth-card stack" id="login-form" hidden>
+    <h1>Welcome back</h1>
+    <p class="msg err" hidden></p>
+    <label class="field"><span>Email</span><input name="email" type="email" autocomplete="username" required></label>
+    <label class="field"><span>Password</span><input name="password" type="password" autocomplete="current-password" required></label>
+    <button class="btn btn-primary btn-block" type="submit">Log in</button>
+  </form>
+
+  <form class="auth-card stack" id="setup-form" hidden>
+    <h1>Set up your board</h1>
+    <p class="muted">This appears once, before any account exists. Enter the setup key you saved in Cloudflare, then choose your login.</p>
+    <p class="msg err" hidden></p>
+    <label class="field"><span>Setup key</span><input name="setupKey" type="password" required autocomplete="off"></label>
+    <label class="field"><span>Your name</span><input name="name" required autocomplete="name"></label>
+    <label class="field"><span>Email</span><input name="email" type="email" required autocomplete="username"></label>
+    <label class="field"><span>Password <small>(at least 8 characters)</small></span><input name="password" type="password" minlength="8" required autocomplete="new-password"></label>
+    <button class="btn btn-primary btn-block" type="submit">Create my account</button>
+  </form>
+</main>
+<script type="module">
+  async function post(path, body) {
+    const res = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Request failed (${res.status}).`);
+    return data;
+  }
+  function wire(form, path) {
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const msg = form.querySelector('.msg');
+      const btn = form.querySelector('button');
+      msg.hidden = true;
+      btn.disabled = true;
+      try {
+        await post(path, Object.fromEntries(new FormData(form)));
+        location.href = '/';
+      } catch (err) {
+        msg.textContent = err.message;
+        msg.hidden = false;
+        btn.disabled = false;
+      }
+    });
+  }
+  const loginForm = document.getElementById('login-form');
+  const setupForm = document.getElementById('setup-form');
+  wire(loginForm, '/api/login');
+  wire(setupForm, '/api/setup');
+
+  const session = await fetch('/api/session').then((r) => r.json()).catch(() => ({}));
+  if (session.user) location.href = '/';
+  const setup = await fetch('/api/setup').then((r) => r.json()).catch(() => ({}));
+  const form = setup.needsSetup ? setupForm : loginForm;
+  form.hidden = false;
+  form.querySelector('input').focus();
+</script>
+</body>
+</html>
