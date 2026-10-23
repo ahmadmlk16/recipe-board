@@ -4,16 +4,22 @@ import {
   aisleOf,
   baseName,
   combineAmounts,
-  formatIngredient,
   formatQty,
+  ingredientSections,
+  ingredientsToText,
   keyOf,
   parseIngredient,
   parseIngredients,
+  parseSteps,
+  recipeFactor,
+  scaleAmount,
+  stepSections,
   titleCase,
 } from './lib.js';
 
 const CATEGORIES = ['Breakfast', 'Lunch', 'Dinner', 'Dessert', 'Snack', 'Drink', 'Other'];
 const AISLE_NAME = Object.fromEntries(AISLES);
+const MAX_PHOTOS = 3;
 
 const S = { recipes: new Map(), grocery: new Map(), user: null };
 const ui = {
@@ -21,12 +27,31 @@ const ui = {
   selected: null,
   editing: null, // null | { id, draft }
   confirmDelete: false,
+  confirmSplit: false,
   confirmClear: false,
-  addMode: 'link',
+  addMode: matchMedia('(pointer: coarse)').matches ? 'photo' : 'link',
+  filter: readPref('rb-filter', ''),
+  photos: [], // data URLs waiting to be read
 };
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
+
+function readPref(key, fallback) {
+  try {
+    return localStorage.getItem(key) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+function writePref(key, value) {
+  try {
+    if (value) localStorage.setItem(key, value);
+    else localStorage.removeItem(key);
+  } catch {
+    // Storage blocked; the choice just won't be remembered.
+  }
+}
 
 /* --------------------------------- API ---------------------------------- */
 
@@ -60,6 +85,12 @@ async function loadState() {
 function newId() {
   const bytes = crypto.getRandomValues(new Uint8Array(9));
   return [...bytes].map((b) => b.toString(36).padStart(2, '0')).join('').slice(0, 14);
+}
+
+function stripId(doc) {
+  const copy = structuredClone(doc);
+  delete copy.id;
+  return copy;
 }
 
 // Optimistic writes: update the screen first, then save. On failure, reload.
@@ -100,6 +131,14 @@ async function refresh() {
 
 const recipesSorted = () => [...S.recipes.values()].sort((a, b) => a.name.localeCompare(b.name));
 const sid = (recipeId, index) => `${recipeId}#${index}`;
+const components = (r) => (r.components || []).map((id) => S.recipes.get(id)).filter(Boolean);
+const usedIn = (r) => recipesSorted().filter((p) => (p.components || []).includes(r.id));
+
+/** An ingredient's amount at the recipe's chosen serving size. */
+function scaled(recipe, ing) {
+  return scaleAmount(ing.qty, ing.unit, recipeFactor(recipe));
+}
+const amountText = (a) => [formatQty(a.qty), a.unit].filter(Boolean).join(' ');
 
 function isOnList(recipe, index) {
   const ing = recipe.ingredients[index];
@@ -107,20 +146,22 @@ function isOnList(recipe, index) {
   return !!g?.sources?.some((s) => s.sid === sid(recipe.id, index));
 }
 
+function sourceFor(recipe, index) {
+  const a = scaled(recipe, recipe.ingredients[index]);
+  return { sid: sid(recipe.id, index), rid: recipe.id, rname: recipe.name, qty: a.qty, unit: a.unit };
+}
+
 /** Add or remove recipe ingredient uses (all sharing one grocery key) in a single write. */
 async function setUses(key, uses, on) {
   const cur = S.grocery.get(key);
   const first = uses[0].ing;
   const doc = cur
-    ? structuredClone({ ...cur, id: undefined })
+    ? stripId(cur)
     : { name: titleCase(baseName(first.item)), aisle: aisleOf(first.item), bought: false, sources: [], addedAt: Date.now() };
-  delete doc.id;
   const ids = new Set(uses.map((u) => sid(u.recipe.id, u.index)));
   doc.sources = doc.sources.filter((s) => !ids.has(s.sid));
   if (on) {
-    for (const u of uses) {
-      doc.sources.push({ sid: sid(u.recipe.id, u.index), rid: u.recipe.id, rname: u.recipe.name, qty: u.ing.qty ?? null, unit: u.ing.unit || '' });
-    }
+    for (const u of uses) doc.sources.push(sourceFor(u.recipe, u.index));
     doc.bought = false;
   }
   if (doc.sources.length) await save('grocery', key, doc);
@@ -138,29 +179,89 @@ function usesByKey(recipe, indexes = recipe.ingredients.map((_, i) => i)) {
   return groups;
 }
 
-async function addRecipeToList(recipe) {
-  const missing = recipe.ingredients.map((_, i) => i).filter((i) => !isOnList(recipe, i));
+async function addToList(recipe, indexes) {
+  const missing = indexes.filter((i) => !isOnList(recipe, i));
   for (const [key, uses] of usesByKey(recipe, missing)) await setUses(key, uses, true);
-  toast(missing.length ? `Added ${missing.length} item${missing.length === 1 ? '' : 's'} to the grocery list.` : 'Everything is already on the list.');
+  return missing.length;
 }
 
-// When a recipe is edited or deleted, keep its grocery lines in step.
+async function addRecipeToList(recipe, { withParts = true } = {}) {
+  let added = await addToList(recipe, recipe.ingredients.map((_, i) => i));
+  if (withParts) {
+    for (const part of components(recipe)) added += await addToList(part, part.ingredients.map((_, i) => i));
+  }
+  toast(added ? `Added ${added} item${added === 1 ? '' : 's'} to the grocery list.` : 'Everything is already on the list.');
+}
+
+// When a recipe is edited, rescaled or deleted, keep its grocery lines in step.
 async function syncRecipeOnList(oldRecipe, newRecipe) {
   const touched = [...S.grocery.entries()].filter(([, g]) => g.sources?.some((s) => s.rid === oldRecipe.id));
-  const keysOnList = new Set(touched.map(([k]) => k));
   for (const [key, g] of touched) {
-    const doc = structuredClone(g);
-    delete doc.id;
+    const doc = stripId(g);
     doc.sources = doc.sources.filter((s) => s.rid !== oldRecipe.id);
     if (newRecipe) {
       newRecipe.ingredients.forEach((ing, i) => {
-        if (keyOf(ing.item) === key) doc.sources.push({ sid: sid(newRecipe.id, i), rid: newRecipe.id, rname: newRecipe.name, qty: ing.qty ?? null, unit: ing.unit || '' });
+        if (keyOf(ing.item) === key) doc.sources.push(sourceFor(newRecipe, i));
       });
     }
     if (doc.sources.length) await save('grocery', key, doc);
     else await remove('grocery', key);
   }
-  return keysOnList;
+}
+
+/* ------------------------------ Serving size ----------------------------- */
+
+const SCALE_STEPS = [0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4, 5, 6, 8, 10];
+let scaleTimer;
+const scalePending = new Set();
+
+function servingsLabel(r) {
+  const f = recipeFactor(r);
+  if (r.servings) return `${formatQty(Math.round(r.servings * f * 100) / 100)}`;
+  return `×${formatQty(f)}`;
+}
+
+function nextScale(r, dir) {
+  const f = recipeFactor(r);
+  if (r.servings) {
+    const target = Math.max(1, Math.round(r.servings * f) + dir);
+    return target / r.servings;
+  }
+  const i = SCALE_STEPS.findIndex((s) => s >= f - 1e-9);
+  const at = i < 0 ? SCALE_STEPS.length - 1 : i;
+  return SCALE_STEPS[Math.min(SCALE_STEPS.length - 1, Math.max(0, at + dir))];
+}
+
+function setScale(r, scale) {
+  const old = S.recipes.get(r.id);
+  const ratio = scale / recipeFactor(old);
+  S.recipes.set(r.id, { ...old, scale });
+  scalePending.add(r.id);
+  // Linked parts (a dough, a sauce) grow with the dish they're made for.
+  for (const p of components(old)) {
+    S.recipes.set(p.id, { ...p, scale: Math.round(recipeFactor(p) * ratio * 1000) / 1000 });
+    scalePending.add(p.id);
+  }
+  renderDetail();
+  // Save once the person stops tapping, then update amounts already on the list.
+  clearTimeout(scaleTimer);
+  scaleTimer = setTimeout(async () => {
+    const ids = [...scalePending];
+    scalePending.clear();
+    for (const id of ids) {
+      const current = S.recipes.get(id);
+      if (!current) continue;
+      await save('recipes', id, stripId(current));
+      await syncRecipeOnList(current, current);
+    }
+    renderRecipes();
+  }, 600);
+}
+
+/** A split-off part is named "Marinade (Chicken tikka)"; inside its parent, "Marinade" is enough. */
+function partName(part, parent) {
+  const suffix = ` (${parent.name})`;
+  return part.name.endsWith(suffix) ? part.name.slice(0, -suffix.length) : part.name;
 }
 
 /* -------------------------------- Rendering ------------------------------ */
@@ -195,18 +296,35 @@ function render() {
   if (ui.view === 'grocery') renderGrocery();
 }
 
-function metaLine(r) {
+function metaLine(r, { scaled: useScale = false } = {}) {
   const bits = [];
   if (r.minutes) bits.push(r.minutes >= 60 ? `${Math.floor(r.minutes / 60)} h ${r.minutes % 60 ? (r.minutes % 60) + ' min' : ''}`.trim() : `${r.minutes} min`);
-  if (r.servings) bits.push(`serves ${formatQty(r.servings)}`);
+  if (r.servings) bits.push(`serves ${useScale ? servingsLabel(r) : formatQty(r.servings)}`);
   if (r.nutrition?.calories) bits.push(`${Math.round(r.nutrition.calories)} kcal`);
   return bits.join(' · ');
 }
 
+function renderFilters() {
+  const box = $('#recipe-filters');
+  const counts = new Map();
+  for (const r of S.recipes.values()) counts.set(r.category, (counts.get(r.category) || 0) + 1);
+  if (ui.filter && !counts.has(ui.filter)) ui.filter = '';
+  box.hidden = counts.size < 2;
+  box.replaceChildren(
+    el('button', { class: 'filter-chip', type: 'button', 'data-act': 'filter', 'data-cat': '', 'aria-pressed': String(!ui.filter) }, 'All ', el('span', { class: 'count', text: S.recipes.size })),
+    ...CATEGORIES.filter((c) => counts.has(c)).map((c) =>
+      el('button', { class: 'filter-chip', type: 'button', 'data-act': 'filter', 'data-cat': c, 'aria-pressed': String(ui.filter === c) }, c + ' ', el('span', { class: 'count', text: counts.get(c) })),
+    ),
+  );
+}
+
 function renderRecipes() {
+  renderFilters();
   const q = $('#recipe-search').value.trim().toLowerCase();
   const list = recipesSorted().filter(
-    (r) => !q || r.name.toLowerCase().includes(q) || r.ingredients.some((i) => i.item.toLowerCase().includes(q)) || (r.tags || []).some((t) => t.includes(q)),
+    (r) =>
+      (!ui.filter || r.category === ui.filter) &&
+      (!q || r.name.toLowerCase().includes(q) || r.ingredients.some((i) => i.item.toLowerCase().includes(q)) || (r.tags || []).some((t) => t.includes(q))),
   );
   const cards = $('#recipe-cards');
   cards.replaceChildren();
@@ -215,16 +333,21 @@ function renderRecipes() {
     cards.append(
       el('div', { class: 'empty' },
         el('p', { class: 'empty-title', text: 'No recipes yet' }),
-        el('p', { class: 'muted', text: 'Add one from a link, paste one in, or ask AI for an idea. Its ingredients show up on the Ingredients tab, ready for your grocery list.' }),
+        el('p', { class: 'muted', text: 'Snap a photo of a recipe, add one from a link, or ask AI for an idea. Its ingredients show up on the Ingredients tab, ready for your grocery list.' }),
         el('button', { class: 'btn', type: 'button', 'data-act': 'load-examples', text: 'Add 3 example recipes' }),
       ),
     );
   } else if (!list.length) {
-    cards.append(el('p', { class: 'muted pad', text: `No recipes match "${q}".` }));
+    cards.append(el('p', { class: 'muted pad', text: q ? `No ${ui.filter ? ui.filter.toLowerCase() + ' ' : ''}recipes match "${q}".` : `No ${ui.filter.toLowerCase()} recipes yet.` }));
   }
 
   for (const r of list) {
-    const onList = r.ingredients.filter((_, i) => isOnList(r, i)).length;
+    const parts = components(r);
+    // A dish made from linked parts counts their ingredients too.
+    const all = [r, ...parts].flatMap((x) => x.ingredients.map((_, i) => [x, i]));
+    const onList = all.filter(([x, i]) => isOnList(x, i)).length;
+    const total = all.length;
+    const parents = usedIn(r);
     cards.append(
       el('button', { class: 'recipe-card', type: 'button', 'data-act': 'select', 'data-id': r.id, 'aria-pressed': String(ui.selected === r.id) },
         el('span', { class: 'rc-top' },
@@ -233,10 +356,12 @@ function renderRecipes() {
         ),
         el('span', { class: 'rc-name', text: r.name }),
         el('span', { class: 'rc-meta', text: metaLine(r) || `${r.ingredients.length} ingredients` }),
-        el('span', { class: 'rc-bar', 'aria-label': `${onList} of ${r.ingredients.length} ingredients on the grocery list` },
-          el('span', { class: 'rc-bar-fill', style: `width:${r.ingredients.length ? (onList / r.ingredients.length) * 100 : 0}%` }),
+        parts.length ? el('span', { class: 'rc-link', text: `Made with ${parts.map((p) => partName(p, r).toLowerCase()).join(', ')}` }) : null,
+        parents.length ? el('span', { class: 'rc-link', text: `Part of ${parents.map((p) => p.name).join(', ')}` }) : null,
+        el('span', { class: 'rc-bar', 'aria-label': `${onList} of ${total} ingredients on the grocery list` },
+          el('span', { class: 'rc-bar-fill', style: `width:${total ? (onList / total) * 100 : 0}%` }),
         ),
-        el('span', { class: 'rc-list', text: onList ? `${onList}/${r.ingredients.length} on grocery list` : `${r.ingredients.length} ingredients` }),
+        el('span', { class: 'rc-list', text: onList ? `${onList}/${total} on grocery list` : `${total} ingredients` }),
       ),
     );
   }
@@ -246,6 +371,28 @@ function renderRecipes() {
     return;
   }
   renderDetail();
+}
+
+function ingredientRows(recipe, items) {
+  return el('ul', { class: 'ing-list' },
+    items.map(({ ing, index }) =>
+      el('li', {},
+        el('label', { class: 'check' },
+          el('input', { type: 'checkbox', checked: isOnList(recipe, index), 'data-act': 'toggle-ing', 'data-rid': recipe.id, 'data-index': index }),
+          el('span', { class: 'qty', text: amountText(scaled(recipe, ing)) }),
+          el('span', { class: 'ing-name', text: ing.item }),
+        ),
+      ),
+    ),
+  );
+}
+
+function sectionHead(title, recipe, indexes, extra) {
+  const allOn = indexes.every((i) => isOnList(recipe, i));
+  return el('div', { class: 'part-head' },
+    el('h3', {}, title, extra || null),
+    el('button', { class: 'btn btn-small btn-ghost', type: 'button', 'data-act': 'add-part', 'data-rid': recipe.id, 'data-indexes': indexes.join(','), disabled: allOn, text: allOn ? 'On list' : 'Add part' }),
+  );
 }
 
 function renderDetail() {
@@ -263,21 +410,31 @@ function renderDetail() {
     );
     return;
   }
-  const onCount = r.ingredients.filter((_, i) => isOnList(r, i)).length;
+  const parts = components(r);
+  const parents = usedIn(r);
+  const sections = ingredientSections(r.ingredients);
+  const named = sections.filter((s) => s.group);
+  const allIndexes = [r.ingredients.map((_, i) => i), ...parts.map((p) => p.ingredients.map((_, i) => i))];
+  const totalCount = allIndexes.flat().length;
+  const onCount = r.ingredients.filter((_, i) => isOnList(r, i)).length + parts.reduce((n, p) => n + p.ingredients.filter((_, i) => isOnList(p, i)).length, 0);
+  const f = recipeFactor(r);
   const n = r.nutrition;
 
-  const parts = [
+  const parts_ = [
     el('button', { class: 'back-link', type: 'button', 'data-act': 'close-detail', text: '← All recipes' }),
     r.image ? el('img', { class: 'detail-img', src: r.image, alt: '', loading: 'lazy', referrerPolicy: 'no-referrer' }) : null,
     el('div', { class: 'detail-head' },
       el('div', {},
         el('div', { class: 'rc-top' },
           el('span', { class: `chip cat cat-${r.category.toLowerCase()}`, text: r.category }),
-          ...(r.tags || []).map((t) => el('span', { class: 'chip ghost', text: t })),
+          ...(r.tags || []).map((t) => el('button', { class: 'chip ghost tag', type: 'button', 'data-act': 'tag', 'data-tag': t, title: `Show recipes tagged ${t}`, text: t })),
           r.example ? el('span', { class: 'chip ghost', text: 'Example' }) : null,
         ),
         el('h1', { text: r.name }),
         el('p', { class: 'muted', text: metaLine(r) }),
+        parents.length
+          ? el('p', { class: 'linked-note' }, 'Part of ', ...parents.flatMap((p, i) => [i ? ', ' : '', el('button', { class: 'link-btn', type: 'button', 'data-act': 'select', 'data-id': p.id, text: p.name })]))
+          : null,
       ),
       el('div', { class: 'detail-actions' },
         el('button', { class: 'btn', type: 'button', 'data-act': 'edit', text: 'Edit' }),
@@ -290,6 +447,21 @@ function renderDetail() {
           : el('button', { class: 'btn btn-ghost', type: 'button', 'data-act': 'delete', text: 'Delete' }),
       ),
     ),
+
+    el('div', { class: 'scaler-row' },
+      el('div', { class: 'scaler', role: 'group', 'aria-label': r.servings ? 'Servings' : 'Batch size' },
+        el('span', { class: 'scaler-label', text: r.servings ? 'Servings' : 'Batch' }),
+        el('button', { class: 'step-btn', type: 'button', 'data-act': 'scale-down', 'aria-label': 'Fewer', text: '−', disabled: (r.servings ? Math.round(r.servings * f) <= 1 : f <= SCALE_STEPS[0]) }),
+        el('output', { class: 'scaler-value', text: servingsLabel(r) }),
+        el('button', { class: 'step-btn', type: 'button', 'data-act': 'scale-up', 'aria-label': 'More', text: '+' }),
+      ),
+      Math.abs(f - 1) > 1e-9
+        ? el('p', { class: 'hint' },
+            `Amounts scaled ×${formatQty(Math.round(f * 100) / 100)}${r.servings ? ` from ${formatQty(r.servings)} servings` : ''}. Amounts written inside the steps are not. `,
+            el('button', { class: 'link-btn', type: 'button', 'data-act': 'scale-reset', text: 'Reset' }))
+        : null,
+    ),
+
     n && (n.calories || n.protein)
       ? el('dl', { class: 'nutrition', 'aria-label': 'Nutrition per serving' },
           ...[['Calories', n.calories, 'kcal'], ['Protein', n.protein, 'g'], ['Carbs', n.carbs, 'g'], ['Fat', n.fat, 'g']]
@@ -298,34 +470,54 @@ function renderDetail() {
           el('p', { class: 'hint', text: r.nutritionEstimated ? 'Per serving, estimated by AI.' : 'Per serving.' }),
         )
       : null,
+
     el('div', { class: 'detail-cols' },
       el('section', { class: 'ing-panel' },
         el('div', { class: 'panel-head' },
           el('h2', { text: 'Ingredients' }),
-          el('button', { class: 'btn btn-small', type: 'button', 'data-act': 'add-all', disabled: onCount === r.ingredients.length || !r.ingredients.length, text: onCount === r.ingredients.length && r.ingredients.length ? 'All on list' : 'Add all to list' }),
+          el('button', { class: 'btn btn-small', type: 'button', 'data-act': 'add-all', disabled: onCount === totalCount || !totalCount, text: onCount === totalCount && totalCount ? 'All on list' : parts.length ? 'Add all, with parts' : 'Add all to list' }),
         ),
-        el('ul', { class: 'ing-list' },
-          r.ingredients.map((ing, i) =>
-            el('li', {},
-              el('label', { class: 'check' },
-                el('input', { type: 'checkbox', checked: isOnList(r, i), 'data-act': 'toggle-ing', 'data-index': i }),
-                el('span', { class: 'qty', text: [formatQty(ing.qty), ing.unit].filter(Boolean).join(' ') }),
-                el('span', { class: 'ing-name', text: ing.item }),
-              ),
-            ),
+        ...sections.map((sec) =>
+          el('div', { class: 'part' },
+            named.length ? sectionHead(sec.group || 'Main', r, sec.items.map((x) => x.index)) : null,
+            ingredientRows(r, sec.items),
+          ),
+        ),
+        ...parts.map((p) =>
+          el('div', { class: 'part linked' },
+            sectionHead(partName(p, r), p, p.ingredients.map((_, i) => i), el('button', { class: 'link-btn small', type: 'button', 'data-act': 'select', 'data-id': p.id, text: 'Open recipe' })),
+            ingredientRows(p, ingredientSections(p.ingredients).flatMap((s) => s.items)),
           ),
         ),
         el('p', { class: 'hint', text: 'Ticked items are on your grocery list.' }),
+        named.length >= 2
+          ? ui.confirmSplit
+            ? el('div', { class: 'confirm split-confirm' },
+                el('span', { text: `Make ${named.map((s) => s.group).join(', ')} their own recipes, linked to this one?` }),
+                el('button', { class: 'btn btn-small btn-primary', type: 'button', 'data-act': 'split-yes', text: 'Split' }),
+                el('button', { class: 'btn btn-small btn-ghost', type: 'button', 'data-act': 'split-no', text: 'Cancel' }))
+            : el('button', { class: 'btn btn-small btn-ghost split-btn', type: 'button', 'data-act': 'split', text: 'Split parts into linked recipes' })
+          : null,
       ),
       el('section', { class: 'steps-panel' },
         el('h2', { text: 'Method' }),
-        r.steps.length ? el('ol', { class: 'steps' }, r.steps.map((s) => el('li', { text: s }))) : el('p', { class: 'muted', text: 'No steps written yet.' }),
+        parts.length
+          ? el('p', { class: 'linked-note' }, 'Make first: ', ...parts.flatMap((p, i) => [i ? ', ' : '', el('button', { class: 'link-btn', type: 'button', 'data-act': 'select', 'data-id': p.id, text: partName(p, r) })]))
+          : null,
+        r.steps.length
+          ? stepSections(r.steps).map((sec) =>
+              el('div', { class: 'part' },
+                sec.group ? el('h3', { text: sec.group }) : null,
+                el('ol', { class: 'steps' }, sec.steps.map((s) => el('li', { text: s }))),
+              ),
+            )
+          : el('p', { class: 'muted', text: 'No steps written yet.' }),
         r.notes ? el('div', { class: 'notes' }, el('h3', { text: 'Notes' }), el('p', { text: r.notes })) : null,
         r.sourceUrl ? el('p', { class: 'source' }, 'Source: ', el('a', { href: r.sourceUrl, target: '_blank', rel: 'noopener noreferrer', text: new URL(r.sourceUrl).hostname.replace(/^www\./, '') })) : null,
       ),
     ),
   ];
-  box.append(...parts.filter(Boolean));
+  box.append(...parts_.filter(Boolean));
 }
 
 /* --------------------------------- Editor -------------------------------- */
@@ -336,6 +528,8 @@ function renderEditor() {
   box.classList.add('is-open');
   document.body.classList.add('detail-open');
   const n = draft.nutrition || {};
+  const others = recipesSorted().filter((o) => o.id !== id);
+  const chosen = new Set(draft.components || []);
   const form = el('form', { id: 'recipe-form', class: 'editor', novalidate: true },
     el('div', { class: 'detail-head' },
       el('h1', { text: S.recipes.has(id) ? 'Edit recipe' : 'New recipe' }),
@@ -345,27 +539,41 @@ function renderEditor() {
       ),
     ),
     draft.sourceUrl && !S.recipes.has(id) && /^https?:/.test(draft.sourceUrl) ? el('p', { class: 'hint', text: `Imported from ${new URL(draft.sourceUrl).hostname}. Check it over, then save.` }) : null,
+    draft.fromPhoto && !S.recipes.has(id) ? el('p', { class: 'msg ok', text: 'Read from your photo. Check the amounts against the original, then save.' }) : null,
     el('label', { class: 'field' }, el('span', { text: 'Name' }), el('input', { id: 'f-name', name: 'name', required: true, value: draft.name || '', maxLength: 150 })),
     el('div', { class: 'row3' },
-      el('label', { class: 'field' }, el('span', { text: 'Meal' }),
+      el('label', { class: 'field' }, el('span', { text: 'Type' }),
         el('select', { id: 'f-category', name: 'category' }, CATEGORIES.map((c) => el('option', { value: c, selected: c === (draft.category || 'Dinner'), text: c })))),
       el('label', { class: 'field' }, el('span', { text: 'Total time (min)' }), el('input', { id: 'f-minutes', name: 'minutes', type: 'number', min: 0, inputMode: 'numeric', value: draft.minutes ?? '' })),
       el('label', { class: 'field' }, el('span', { text: 'Serves' }), el('input', { id: 'f-servings', name: 'servings', type: 'number', min: 0, inputMode: 'numeric', value: draft.servings ?? '' })),
     ),
     el('div', { class: 'editor-cols' },
       el('label', { class: 'field' },
-        el('span', {}, 'Ingredients ', el('small', { text: 'one per line, amount first' })),
-        el('textarea', { id: 'f-ingredients', name: 'ingredients', rows: 10, placeholder: '2 cups basmati rice\n1 lb chicken thighs\n3 cloves garlic, minced\nsalt to taste', value: (draft.ingredients || []).map(formatIngredient).join('\n') }),
+        el('span', {}, 'Ingredients ', el('small', { text: 'one per line, amount first. Start a part with a line like "## Sauce"' })),
+        el('textarea', { id: 'f-ingredients', name: 'ingredients', rows: 12, placeholder: '2 cups basmati rice\n1 lb chicken thighs\n\n## Raita\n1 cup yogurt\n½ cucumber, grated', value: ingredientsToText(draft.ingredients || []) }),
       ),
       el('div', { class: 'field' },
         el('span', { text: 'How it reads' }),
-        el('ul', { class: 'parse-preview', id: 'parse-preview' }),
+        el('div', { class: 'parse-preview', id: 'parse-preview' }),
       ),
     ),
     el('label', { class: 'field' },
-      el('span', {}, 'Method ', el('small', { text: 'one step per line' })),
-      el('textarea', { id: 'f-steps', name: 'steps', rows: 7, value: (draft.steps || []).join('\n') }),
+      el('span', {}, 'Method ', el('small', { text: 'one step per line; "## Sauce" starts a part' })),
+      el('textarea', { id: 'f-steps', name: 'steps', rows: 8, value: (draft.steps || []).join('\n') }),
     ),
+    others.length
+      ? el('fieldset', { class: 'made-with' },
+          el('legend', {}, 'Made with other recipes ', el('small', { text: 'e.g. a dough, sauce or side you keep as its own recipe' })),
+          el('div', { class: 'uses' },
+            others.map((o) =>
+              el('label', { class: 'use-chip pick' },
+                el('input', { type: 'checkbox', name: 'components', value: o.id, checked: chosen.has(o.id) }),
+                el('span', { text: o.name }),
+              ),
+            ),
+          ),
+        )
+      : null,
     el('label', { class: 'field' }, el('span', { text: 'Notes' }), el('textarea', { id: 'f-notes', name: 'notes', rows: 2, value: draft.notes || '' })),
     el('fieldset', { class: 'nutri-edit' },
       el('legend', {}, 'Nutrition per serving ', el('small', { text: 'optional, used by the calorie tracker later' })),
@@ -391,16 +599,26 @@ function renderEditor() {
 
 function updatePreview() {
   const list = parseIngredients($('#f-ingredients').value);
-  $('#parse-preview').replaceChildren(
-    ...(list.length
-      ? list.map((ing) =>
-          el('li', {},
-            el('span', { class: 'qty', text: [formatQty(ing.qty), ing.unit].filter(Boolean).join(' ') || '·' }),
-            el('span', { text: baseName(ing.item) }),
-            el('span', { class: 'aisle-tag', text: AISLE_NAME[aisleOf(ing.item)] }),
+  const box = $('#parse-preview');
+  if (!list.length) {
+    box.replaceChildren(el('p', { class: 'muted', text: 'Type ingredients to see how they’ll be grouped for shopping.' }));
+    return;
+  }
+  box.replaceChildren(
+    ...ingredientSections(list).map((sec) =>
+      el('div', {},
+        sec.group ? el('p', { class: 'preview-part', text: sec.group }) : null,
+        el('ul', {},
+          sec.items.map(({ ing }) =>
+            el('li', {},
+              el('span', { class: 'qty', text: amountText(ing) || '·' }),
+              el('span', { text: baseName(ing.item) }),
+              el('span', { class: 'aisle-tag', text: AISLE_NAME[aisleOf(ing.item)] }),
+            ),
           ),
-        )
-      : [el('li', { class: 'muted', text: 'Type ingredients to see how they’ll be grouped for shopping.' })]),
+        ),
+      ),
+    ),
   );
 }
 
@@ -418,19 +636,23 @@ async function submitRecipe(e) {
   const { id, draft } = ui.editing;
   const old = S.recipes.get(id);
   const number = (v) => (v === '' ? null : Number(v));
+  const servings = number(f.servings.value);
   const recipe = {
     name,
     category: f.category.value,
     minutes: number(f.minutes.value),
-    servings: number(f.servings.value),
+    servings,
     ingredients: parseIngredients(f.ingredients.value),
-    steps: f.steps.value.split(/\r?\n/).map((s) => s.replace(/^\s*\d+[.)]\s*/, '').trim()).filter(Boolean),
+    steps: parseSteps(f.steps.value),
     notes: f.notes.value.trim(),
     nutrition: { calories: number(f.calories.value), protein: number(f.protein.value), carbs: number(f.carbs.value), fat: number(f.fat.value) },
     nutritionEstimated: !!draft.nutritionEstimated && (draft.nutrition?.calories ?? null) === number(f.calories.value),
     tags: f.tags.value.split(',').map((t) => t.trim().toLowerCase()).filter(Boolean),
     sourceUrl: f.sourceUrl.value.trim(),
     image: draft.image || '',
+    components: $$('input[name="components"]:checked', e.target).map((c) => c.value),
+    // Keep the chosen serving size unless the base servings changed.
+    scale: old && old.servings === servings ? recipeFactor(old) : 1,
     example: !!old?.example,
     createdAt: old?.createdAt || Date.now(),
   };
@@ -444,8 +666,63 @@ async function submitRecipe(e) {
 function startEditing(id, draft) {
   ui.editing = { id, draft: structuredClone(draft) };
   ui.confirmDelete = false;
+  ui.confirmSplit = false;
   $('#detail').replaceChildren();
   setView('recipes');
+}
+
+/* ------------------------- Split parts into recipes ------------------------ */
+
+async function splitRecipe(r) {
+  const sections = ingredientSections(r.ingredients);
+  const steps = stepSections(r.steps);
+  const wasOn = new Set(r.ingredients.map((_, i) => i).filter((i) => isOnList(r, i)));
+  const childIds = [];
+  const moves = []; // [{ recipe, index }] to put back on the grocery list
+  const children = [];
+
+  for (const sec of sections.filter((s) => s.group)) {
+    const id = newId();
+    const partSteps = steps.find((s) => s.group.toLowerCase() === sec.group.toLowerCase());
+    const child = {
+      name: `${sec.group} (${r.name})`,
+      category: r.category,
+      minutes: null,
+      servings: r.servings ?? null,
+      scale: recipeFactor(r),
+      ingredients: sec.items.map(({ ing }) => ({ qty: ing.qty, unit: ing.unit, item: ing.item })),
+      steps: partSteps ? partSteps.steps : [],
+      notes: '',
+      tags: r.tags || [],
+      components: [],
+      example: !!r.example,
+      createdAt: Date.now(),
+    };
+    children.push([id, child]);
+    childIds.push(id);
+    sec.items.forEach(({ index }, i) => wasOn.has(index) && moves.push({ id, index: i }));
+  }
+
+  const mainItems = sections.filter((s) => !s.group).flatMap((s) => s.items);
+  const keptSteps = steps.flatMap((s) => {
+    if (!s.group) return s.steps;
+    if (sections.some((sec) => sec.group && sec.group.toLowerCase() === s.group.toLowerCase())) return [];
+    return [`## ${s.group}`, ...s.steps];
+  });
+  const parent = { ...stripId(r), ingredients: mainItems.map(({ ing }) => ing), steps: keptSteps, components: [...new Set([...(r.components || []), ...childIds])] };
+  mainItems.forEach(({ index }, i) => wasOn.has(index) && moves.push({ id: r.id, index: i }));
+
+  await syncRecipeOnList(r, null);
+  for (const [id, child] of children) await save('recipes', id, child);
+  await save('recipes', r.id, parent);
+  const byRecipe = new Map();
+  for (const m of moves) {
+    if (!byRecipe.has(m.id)) byRecipe.set(m.id, []);
+    byRecipe.get(m.id).push(m.index);
+  }
+  for (const [id, indexes] of byRecipe) await addToList(S.recipes.get(id), indexes);
+  ui.confirmSplit = false;
+  toast(`Split into ${children.length} linked recipe${children.length === 1 ? '' : 's'}.`);
 }
 
 /* ------------------------------- Ingredients ------------------------------ */
@@ -499,7 +776,7 @@ function renderIngredients() {
                     title: isOnList(u.recipe, u.index) ? 'On the grocery list. Tap to remove.' : 'Tap to add to the grocery list.',
                   },
                   el('span', { text: u.recipe.name }),
-                  el('span', { class: 'qty', text: [formatQty(u.ing.qty), u.ing.unit].filter(Boolean).join(' ') || 'some' })),
+                  el('span', { class: 'qty', text: amountText(scaled(u.recipe, u.ing)) || 'some' })),
                 ),
               ),
             );
@@ -591,8 +868,7 @@ async function addManualItem(text) {
   if (!ing) return;
   const key = keyOf(ing.item);
   const cur = S.grocery.get(key);
-  const doc = cur ? structuredClone(cur) : { name: titleCase(baseName(ing.item)), aisle: aisleOf(ing.item), bought: false, sources: [], addedAt: Date.now() };
-  delete doc.id;
+  const doc = cur ? stripId(cur) : { name: titleCase(baseName(ing.item)), aisle: aisleOf(ing.item), bought: false, sources: [], addedAt: Date.now() };
   doc.sources.push({ sid: `manual-${newId()}`, rid: '', rname: '', qty: ing.qty ?? null, unit: ing.unit || '' });
   doc.bought = false;
   await save('grocery', key, doc);
@@ -600,13 +876,63 @@ async function addManualItem(text) {
 
 /* ------------------------------- Add recipe ------------------------------- */
 
+const ADD_LABELS = { photo: 'Read photo', link: 'Get recipe', paste: 'Read recipe', generate: 'Create recipe', manual: 'Start writing' };
+
 function setAddMode(mode) {
   ui.addMode = mode;
   $$('.add-tab').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.mode === mode)));
   $$('.add-pane').forEach((p) => (p.hidden = p.dataset.pane !== mode));
-  $('#add-go').textContent = { link: 'Get recipe', paste: 'Read recipe', generate: 'Create recipe', manual: 'Start writing' }[mode];
+  $('#add-go').textContent = ADD_LABELS[mode];
   $('#add-note').textContent = mode === 'manual' ? '' : "You can check and edit everything before it's saved.";
   $('#add-error').hidden = true;
+}
+
+/** Shrink a photo so it uploads quickly and fits the AI's limits. */
+async function shrinkPhoto(file) {
+  const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' }).catch(() => null);
+  const src = bitmap || (await new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('That file is not a photo this browser can open.'));
+    img.src = URL.createObjectURL(file);
+  }));
+  const max = 1600;
+  const w = src.width;
+  const h = src.height;
+  const k = Math.min(1, max / Math.max(w, h));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(w * k);
+  canvas.height = Math.round(h * k);
+  canvas.getContext('2d').drawImage(src, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL('image/jpeg', 0.82);
+}
+
+function renderPhotos() {
+  const box = $('#photo-thumbs');
+  box.replaceChildren(
+    ...ui.photos.map((url, i) =>
+      el('figure', { class: 'thumb' },
+        el('img', { src: url, alt: `Recipe photo ${i + 1}` }),
+        el('button', { class: 'thumb-x', type: 'button', 'data-act': 'remove-photo', 'data-index': i, 'aria-label': `Remove photo ${i + 1}`, text: '×' }),
+      ),
+    ),
+  );
+  $('#photo-pick-label').textContent = ui.photos.length ? (ui.photos.length < MAX_PHOTOS ? 'Add another page' : 'Up to 3 photos') : 'Take or choose a photo';
+  $('#photo-input').disabled = ui.photos.length >= MAX_PHOTOS;
+}
+
+async function onPhotosPicked(e) {
+  const files = [...e.target.files].slice(0, MAX_PHOTOS - ui.photos.length);
+  e.target.value = '';
+  for (const file of files) {
+    try {
+      ui.photos.push(await shrinkPhoto(file));
+    } catch (err) {
+      $('#add-error').textContent = err.message;
+      $('#add-error').hidden = false;
+    }
+  }
+  renderPhotos();
 }
 
 async function runAdd() {
@@ -618,12 +944,17 @@ async function runAdd() {
     startEditing(newId(), { name: '', category: 'Dinner', ingredients: [], steps: [] });
     return;
   }
+  if (mode === 'photo' && !ui.photos.length) {
+    errBox.textContent = 'Take or choose a photo of the recipe first.';
+    errBox.hidden = false;
+    return;
+  }
   const go = $('#add-go');
-  const label = go.textContent;
   go.disabled = true;
-  go.textContent = mode === 'link' ? 'Reading the page…' : mode === 'paste' ? 'Reading…' : 'Writing a recipe…';
+  go.textContent = { photo: 'Reading the photo…', link: 'Reading the page…', paste: 'Reading…', generate: 'Writing a recipe…' }[mode];
   try {
     const req = {
+      photo: ['/api/ai/photo', { images: ui.photos }],
       link: ['/api/ai/import', { url: $('#ai-url').value.trim() }],
       paste: ['/api/ai/parse', { text: $('#ai-text').value }],
       generate: ['/api/ai/generate', { prompt: $('#ai-prompt').value }],
@@ -631,20 +962,40 @@ async function runAdd() {
     const { recipe } = await api(req[0], { method: 'POST', body: req[1] });
     $('#add-dialog').close();
     $('#ai-url').value = $('#ai-text').value = $('#ai-prompt').value = '';
+    if (mode === 'photo') {
+      ui.photos = [];
+      renderPhotos();
+      recipe.fromPhoto = true;
+    }
     startEditing(newId(), recipe);
   } catch (err) {
     errBox.textContent = err.message;
     errBox.hidden = false;
   } finally {
     go.disabled = false;
-    go.textContent = label;
+    go.textContent = ADD_LABELS[mode];
   }
+}
+
+/* ------------------------------- Appearance ------------------------------- */
+
+function applyAppearance() {
+  const theme = readPref('rb-theme', '');
+  const accent = readPref('rb-accent', '');
+  const root = document.documentElement;
+  if (theme) root.dataset.theme = theme;
+  else delete root.dataset.theme;
+  if (accent) root.dataset.accent = accent;
+  else delete root.dataset.accent;
+  $$('[data-act="set-theme"]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.value === theme)));
+  $$('[data-act="set-accent"]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.value === accent)));
 }
 
 /* --------------------------------- Account -------------------------------- */
 
 async function openSettings() {
   $('#signed-in-as').textContent = S.user ? `Signed in as ${S.user.name} (${S.user.email}).` : '';
+  applyAppearance();
   $('#settings-dialog').showModal();
   try {
     const { users } = await api('/api/users');
@@ -702,11 +1053,11 @@ const EXAMPLES = [
     nutrition: { calories: 330, protein: 20, carbs: 9, fat: 24 }, nutritionEstimated: true,
   },
   {
-    name: 'Banana oat pancakes', category: 'Breakfast', minutes: 20, servings: 2, tags: ['vegetarian'],
-    ingredients: parseIngredients('2 bananas\n2 eggs\n1 cup oats\n1/2 cup milk\n1 tsp baking powder\n1 pinch salt\n1 tbsp butter\n2 tbsp honey'),
-    steps: ['Blend bananas, eggs, oats, milk, baking powder and salt until smooth.', 'Rest the batter for 5 minutes.', 'Cook small pancakes in butter over medium heat, 2 minutes a side.', 'Serve with honey.'],
-    notes: 'Example recipe.',
-    nutrition: { calories: 450, protein: 16, carbs: 68, fat: 14 }, nutritionEstimated: true,
+    name: 'Chicken tikka with mint raita', category: 'Dinner', minutes: 50, servings: 4, tags: ['pakistani', 'grill'],
+    ingredients: parseIngredients('## Marinade\n1 1/2 lb chicken thighs, cubed\n1 cup yogurt\n1 tbsp ginger garlic paste\n2 tsp tikka masala\n1 tbsp lemon juice\n1 tsp salt\n\n## Mint raita\n1 cup yogurt\n1/2 cucumber, grated\n2 tbsp mint, chopped\n1/4 tsp cumin powder\n1 pinch salt'),
+    steps: parseSteps('## Marinade\nMix the yogurt, ginger garlic paste, tikka masala, lemon juice and salt.\nCoat the chicken and marinate for at least 30 minutes.\nThread onto skewers and grill or bake at 230°C for 15 to 18 minutes, turning once.\n## Mint raita\nSqueeze the grated cucumber dry.\nStir everything together and chill until serving.'),
+    notes: 'Example recipe with two parts. Try "Split parts into linked recipes".',
+    nutrition: { calories: 360, protein: 41, carbs: 10, fat: 16 }, nutritionEstimated: true,
   },
 ];
 
@@ -723,16 +1074,27 @@ document.addEventListener('click', async (e) => {
   if (!t) return;
   const act = t.dataset.act;
   const r = S.recipes.get(ui.selected);
+  const target = t.dataset.rid ? S.recipes.get(t.dataset.rid) : r;
 
   if (act === 'select') {
     ui.selected = t.dataset.id;
     ui.editing = null;
     ui.confirmDelete = false;
+    ui.confirmSplit = false;
     render();
     if (matchMedia('(max-width: 800px)').matches) window.scrollTo({ top: 0 });
   } else if (act === 'close-detail') {
     ui.selected = null;
     render();
+  } else if (act === 'filter') {
+    ui.filter = t.dataset.cat;
+    writePref('rb-filter', ui.filter);
+    renderRecipes();
+  } else if (act === 'tag') {
+    $('#recipe-search').value = t.dataset.tag;
+    ui.filter = '';
+    writePref('rb-filter', '');
+    renderRecipes();
   } else if (act === 'edit' && r) {
     startEditing(r.id, r);
   } else if (act === 'cancel-edit') {
@@ -749,11 +1111,32 @@ document.addEventListener('click', async (e) => {
     ui.selected = null;
     await remove('recipes', r.id);
     await syncRecipeOnList(r, null);
+    // Unlink it from recipes that were made with it.
+    for (const p of usedIn(r)) await save('recipes', p.id, { ...stripId(p), components: p.components.filter((id) => id !== r.id) });
     toast(`Deleted ${r.name}.`);
-  } else if (act === 'toggle-ing' && r) {
+  } else if (act === 'scale-up' && r) {
+    setScale(r, nextScale(r, 1));
+  } else if (act === 'scale-down' && r) {
+    setScale(r, nextScale(r, -1));
+  } else if (act === 'scale-reset' && r) {
+    setScale(r, 1);
+  } else if (act === 'split') {
+    ui.confirmSplit = true;
+    renderDetail();
+  } else if (act === 'split-no') {
+    ui.confirmSplit = false;
+    renderDetail();
+  } else if (act === 'split-yes' && r) {
+    t.disabled = true;
+    await splitRecipe(r);
+  } else if (act === 'toggle-ing' && target) {
     const index = Number(t.dataset.index);
-    const ing = r.ingredients[index];
-    await setUses(keyOf(ing.item), [{ recipe: r, index, ing }], t.checked);
+    const ing = target.ingredients[index];
+    await setUses(keyOf(ing.item), [{ recipe: target, index, ing }], t.checked);
+  } else if (act === 'add-part' && target) {
+    const indexes = t.dataset.indexes.split(',').filter(Boolean).map(Number);
+    const n = await addToList(target, indexes);
+    toast(`Added ${n} item${n === 1 ? '' : 's'} to the grocery list.`);
   } else if (act === 'add-all' && r) {
     await addRecipeToList(r);
   } else if (act === 'toggle-use') {
@@ -772,11 +1155,7 @@ document.addEventListener('click', async (e) => {
     if (uses.length) await setUses(key, uses, t.checked);
   } else if (act === 'toggle-bought') {
     const g = S.grocery.get(t.dataset.key);
-    if (g) {
-      const doc = { ...g, bought: t.checked };
-      delete doc.id;
-      await save('grocery', g.id, doc);
-    }
+    if (g) await save('grocery', g.id, { ...stripId(g), bought: t.checked });
   } else if (act === 'remove-item') {
     await remove('grocery', t.dataset.key);
   } else if (act === 'clear-all') {
@@ -794,6 +1173,15 @@ document.addEventListener('click', async (e) => {
   } else if (act === 'load-examples') {
     t.disabled = true;
     await loadExamples();
+  } else if (act === 'remove-photo') {
+    ui.photos.splice(Number(t.dataset.index), 1);
+    renderPhotos();
+  } else if (act === 'set-theme') {
+    writePref('rb-theme', t.dataset.value);
+    applyAppearance();
+  } else if (act === 'set-accent') {
+    writePref('rb-accent', t.dataset.value);
+    applyAppearance();
   } else if (act === 'remove-person') {
     try {
       await api(`/api/users/${t.dataset.id}`, { method: 'DELETE' });
@@ -806,6 +1194,7 @@ document.addEventListener('click', async (e) => {
 
 $('#new-recipe').addEventListener('click', () => {
   setAddMode(ui.addMode);
+  renderPhotos();
   $('#add-dialog').showModal();
 });
 $$('.add-tab').forEach((tab) => tab.addEventListener('click', () => setAddMode(tab.dataset.mode)));
@@ -814,6 +1203,7 @@ $('#add-form').addEventListener('submit', (e) => {
   e.preventDefault();
   runAdd();
 });
+$('#photo-input').addEventListener('change', onPhotosPicked);
 
 $('#recipe-search').addEventListener('input', renderRecipes);
 $('#ingredient-search').addEventListener('input', renderIngredients);
@@ -893,6 +1283,7 @@ document.addEventListener('visibilitychange', () => {
 /* ---------------------------------- Start --------------------------------- */
 
 (async () => {
+  applyAppearance();
   try {
     const { user } = await api('/api/session');
     if (!user) {

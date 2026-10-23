@@ -13,7 +13,7 @@ import {
   COOKIE,
 } from './auth.js';
 import { db } from './db.js';
-import { generate, importFromUrl, parseText } from './ai.js';
+import { generate, importFromUrl, parseText, readPhotos } from './ai.js';
 import { cleanGrocery, cleanRecipe } from './recipes.js';
 import { HttpError, clientIp, fail, isEmail, json, now, parseCookies, readJson, sha256, str } from './util.js';
 
@@ -286,4 +286,11 @@ route('POST', '/api/ai/generate', async ({ request, env }) => {
   const body = await readJson(request);
   await aiAllowance(env, user);
   return json(await generate(env, body.prompt));
+});
+
+route('POST', '/api/ai/photo', async ({ request, env }) => {
+  const user = await requireUser(request, env);
+  const body = await readJson(request, 8_000_000);
+  await aiAllowance(env, user);
+  return json(await readPhotos(env, body.images));
 });

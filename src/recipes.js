@@ -25,7 +25,8 @@ function cleanUrl(value) {
 export function cleanIngredient(ing) {
   const item = str(ing?.item, 200);
   if (!item) return null;
-  return { qty: num(ing.qty, 100000), unit: str(ing.unit, 20), item };
+  const group = str(ing.group, 80);
+  return group ? { qty: num(ing.qty, 100000), unit: str(ing.unit, 20), item, group } : { qty: num(ing.qty, 100000), unit: str(ing.unit, 20), item };
 }
 
 export function cleanNutrition(n) {
@@ -64,6 +65,12 @@ export function cleanRecipe(body) {
     nutrition: cleanNutrition(body.nutrition),
     nutritionEstimated: body.nutritionEstimated === true,
     tags,
+    // Chosen serving size as a multiplier of the written recipe (1 = as written).
+    scale: num(body.scale, 100) || 1,
+    // Other recipes this one is made with (sub-recipes such as a dough or a sauce).
+    components: (Array.isArray(body.components) ? body.components : [])
+      .filter((id) => typeof id === 'string' && /^[A-Za-z0-9_-]{1,120}$/.test(id))
+      .slice(0, 20),
     example: body.example === true,
     createdAt: num(body.createdAt, 1e14) ?? Date.now(),
     updatedAt: Date.now(),

@@ -5,7 +5,11 @@ A private recipe board for the household, hosted on Cloudflare Pages (free tier)
 - **Recipes** (`/#recipes`): your saved recipes with ingredients, method, notes and nutrition per serving. Tick an ingredient and it goes on the grocery list; "Add all to list" adds the rest.
 - **Ingredients** (`/#ingredients`): every ingredient your recipes use, grouped by supermarket aisle, with a chip for each recipe that needs it. Tap a chip to shop for that recipe, or tick the row to shop for all of them.
 - **Grocery list** (`/#grocery`): what to buy, grouped by aisle, with amounts added up across recipes ("2 cup + 3 tbsp"). Tick items off in the store, add extras by hand, copy the list into a message.
-- **Add a recipe** four ways: paste a **link** (reads the recipe data most sites publish, no AI needed), **paste text** from anywhere (AI structures it), **ask AI** to create one ("chicken karahi for 4, not too spicy"), or **write it** yourself. Every result opens in the editor first; nothing is saved until you press Save.
+- **Add a recipe** five ways: take a **photo** of a cookbook page, card or handwriting (AI reads it, up to 3 pages), paste a **link** (reads the recipe data most sites publish, no AI needed), **paste text** from anywhere (AI structures it), **ask AI** to create one ("chicken karahi for 4, not too spicy"), or **write it** yourself. Every result opens in the editor first; nothing is saved until you press Save.
+- **Filter** recipes by type (Breakfast, Dinner, …) with the chips under the search box; tap a tag on a recipe to search for it.
+- **Servings**: the − / + buttons rescale every amount (and the grocery list) and remember the size you picked. Units step up as they grow (12 tsp → ¼ cup) and round to kitchen fractions. Amounts written inside the steps are not changed.
+- **Parts**: a recipe can have parts ("## Marinade" in the editor, or "For the sauce:" in pasted text; AI keeps a recipe's parts). Each part gets its own heading and "Add part" button. **Split parts into linked recipes** turns them into their own recipes, linked back to the dish; a recipe can also be "made with" any other recipe (a dough, a chutney). Linked parts show inside the dish and scale with it.
+- **Appearance** (Account): match the device, light or dark, plus five accent colours. Saved per device.
 - **Logins**: the first account is created with a one-time setup key. Anyone logged in can add another person under Account. Everyone shares the same board.
 
 ## Branches
@@ -36,7 +40,7 @@ src/                 server code
   auth.js            password hashing (PBKDF2), sessions, rate limiting
   db.js              D1 schema (auto-created on first request)
   recipes.js         recipe and grocery item shapes, validated on save
-  ai.js              import from link, parse text, generate (Workers AI)
+  ai.js              photo, import from link, parse text, generate (Workers AI)
 wrangler.jsonc       Worker settings and bindings
 dev/server.mjs       local test server (Node 22+, no install needed)
 test/                unit tests: node --test test/*.test.mjs
@@ -48,7 +52,7 @@ Board data lives in one D1 table, `docs (coll, id, data JSON, updated_at)`:
 
 | Collection | One row per | Notes |
 | --- | --- | --- |
-| `recipes` | recipe | `ingredients: [{qty, unit, item}]`, `steps`, `nutrition: {calories, protein, carbs, fat}` per serving, `tags`, `sourceUrl` |
+| `recipes` | recipe | `ingredients: [{qty, unit, item, group?}]`, `steps` (a `"## Part"` entry starts a part), `scale` (chosen serving multiplier), `components` (ids of linked recipes it's made with), `nutrition: {calories, protein, carbs, fat}` per serving, `tags`, `sourceUrl` |
 | `grocery` | thing to buy | id is the normalized ingredient name, so "Eggs" from two recipes is one line; `sources` records which recipe (and which ingredient line) asked for how much |
 
 ### Planned: calorie tracker and Life Board
@@ -69,7 +73,7 @@ The app deploys either as a **Worker** (the live setup) or as a **Pages** projec
 
 - **Settings → Build**: Git repository `ahmadmlk16/recipe-board`, production branch `prod`, build command empty, deploy command `npx wrangler deploy`.
 - The D1 database `recipe-board-db` and the Workers AI binding come from `wrangler.jsonc`; the database is created on the first deploy.
-- **Settings → Variables and Secrets**: add `SETUP_KEY` as a Secret (plus `AI_DAILY_LIMIT` / `AI_MODEL` if wanted).
+- **Settings → Variables and Secrets**: add `SETUP_KEY` as a Secret (plus `AI_DAILY_LIMIT` / `AI_MODEL` / `AI_VISION_MODEL` if wanted).
 - Branch pushes get preview URLs, but they share the production database.
 
 ### As a Pages project
@@ -92,6 +96,7 @@ The app deploys either as a **Worker** (the live setup) or as a **Pages** projec
 | `SETUP_KEY` | Secret | One-time key used to create the first account at `/login` |
 | `AI_DAILY_LIMIT` | Text (optional) | AI requests per person per day, default 40. Keeps usage inside the free Workers AI allowance |
 | `AI_MODEL` | Text (optional) | Workers AI model, default `@cf/meta/llama-3.3-70b-instruct-fp8-fast` |
+| `AI_VISION_MODEL` | Text (optional) | Model that reads recipe photos, default `@cf/meta/llama-4-scout-17b-16e-instruct` |
 
 Database tables are created automatically; there are no migrations to run. After changing bindings, redeploy (Deployments → ⋯ → Retry deployment) so they take effect.
 

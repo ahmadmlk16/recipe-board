@@ -5,11 +5,15 @@
 // and for pasted text or "make me a recipe" prompts, do we call Workers AI
 // (free daily allowance on Cloudflare). Every result is a draft: the app
 // opens it in the editor and nothing is saved until the person saves it.
-import { parseIngredients } from '../public/assets/lib.js';
+import { parseIngredients, parseSteps } from '../public/assets/lib.js';
 import { CATEGORIES } from './recipes.js';
 import { fail, str } from './util.js';
 
 const DEFAULT_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
+// Reads photos of printed or handwritten recipes.
+const DEFAULT_VISION_MODEL = '@cf/meta/llama-4-scout-17b-16e-instruct';
+const MAX_IMAGES = 3;
+const MAX_IMAGE_CHARS = 2_500_000; // one data URL, about 1.8 MB of JPEG
 const MAX_PAGE = 2_000_000;
 const MAX_TEXT = 12_000;
 
@@ -41,6 +45,7 @@ const SYSTEM = `You turn recipes into structured JSON for a home cook's recipe b
 Rules:
 - "ingredients": one string per ingredient, quantity first, e.g. "2 cups basmati rice", "3 cloves garlic, minced", "salt to taste". Use numbers, not words, for quantities.
 - "steps": short imperative steps in order, without numbering.
+- If the recipe has separate parts (for example a marinade, a sauce, a dough, a raita), put a line "## Part name" before that part's ingredients in "ingredients" and before that part's steps in "steps". Use the same part names in both lists. Leave parts out for simple recipes.
 - "category": one of ${CATEGORIES.join(', ')}.
 - "minutes": total time; "servings": how many people it feeds.
 - "nutrition": your best estimate PER SERVING: calories (kcal), protein, carbs and fat in grams.
@@ -113,6 +118,7 @@ function steps(instructions) {
     } else if (Array.isArray(node)) {
       node.forEach(walk);
     } else if (node.itemListElement) {
+      if (node.name) out.push(`## ${decodeEntities(node.name)}`);
       walk(node.itemListElement);
     } else if (node.text || node.name) {
       out.push(decodeEntities(node.text || node.name));
@@ -189,7 +195,7 @@ function fromAi(data, sourceUrl = '') {
     minutes: Number(data.minutes) || null,
     servings: Number(data.servings) || null,
     ingredients: parseIngredients((Array.isArray(data.ingredients) ? data.ingredients : []).join('\n')),
-    steps: (Array.isArray(data.steps) ? data.steps : []).map((s) => str(s, 2000)).filter(Boolean),
+    steps: parseSteps((Array.isArray(data.steps) ? data.steps : []).map((s) => str(s, 2000).replace(/\n/g, ' ')).join('\n')),
     notes: str(data.notes, 2000),
     sourceUrl,
     image: '',
@@ -199,24 +205,35 @@ function fromAi(data, sourceUrl = '') {
   };
 }
 
-async function askAi(env, userPrompt) {
+async function askAi(env, userPrompt, images = []) {
   if (!env.AI) fail(503, 'AI is not connected yet. Add the Workers AI binding named AI in Cloudflare.');
+  const model = images.length ? env.AI_VISION_MODEL || DEFAULT_VISION_MODEL : env.AI_MODEL || DEFAULT_MODEL;
+  const content = images.length
+    ? [{ type: 'text', text: userPrompt }, ...images.map((url) => ({ type: 'image_url', image_url: { url } }))]
+    : userPrompt;
+  const messages = [
+    { role: 'system', content: SYSTEM },
+    { role: 'user', content },
+  ];
   let result;
   try {
-    result = await env.AI.run(env.AI_MODEL || DEFAULT_MODEL, {
-      messages: [
-        { role: 'system', content: SYSTEM },
-        { role: 'user', content: userPrompt },
-      ],
+    result = await env.AI.run(model, {
+      messages,
       response_format: { type: 'json_schema', json_schema: RECIPE_SCHEMA },
-      max_tokens: 2500,
-      temperature: 0.4,
+      max_tokens: 3000,
+      temperature: 0.3,
     });
   } catch (err) {
-    console.error('Workers AI error', err);
-    const msg = String(err?.message || '');
-    if (/limit|quota|neuron|429/i.test(msg)) fail(429, "Today's free AI allowance is used up. It resets at midnight UTC.");
-    fail(502, 'The AI could not answer just now. Try again in a minute.');
+    console.error('Workers AI error (JSON mode)', err);
+    if (/limit|quota|neuron|429/i.test(String(err?.message || ''))) fail(429, "Today's free AI allowance is used up. It resets at midnight UTC.");
+    // Some models refuse JSON mode for some inputs; ask again for plain JSON text.
+    try {
+      result = await env.AI.run(model, { messages, max_tokens: 3000, temperature: 0.3 });
+    } catch (err2) {
+      console.error('Workers AI error', err2);
+      if (/limit|quota|neuron|429/i.test(String(err2?.message || ''))) fail(429, "Today's free AI allowance is used up. It resets at midnight UTC.");
+      fail(502, 'The AI could not answer just now. Try again in a minute.');
+    }
   }
   let data = result?.response ?? result;
   if (typeof data === 'string') {
@@ -281,4 +298,21 @@ export async function generate(env, prompt) {
     `Write one reliable, home-kitchen recipe for this request: ${clean}\nUse ingredients found in a normal supermarket.`,
   );
   return { recipe: fromAi(data), method: 'ai' };
+}
+
+export async function readPhotos(env, images) {
+  const list = (Array.isArray(images) ? images : []).filter(
+    (u) => typeof u === 'string' && /^data:image\/(jpeg|png|webp);base64,/.test(u),
+  );
+  if (!list.length) fail(400, 'Add a photo of the recipe first.');
+  if (list.length > MAX_IMAGES) fail(400, `Use at most ${MAX_IMAGES} photos at a time.`);
+  if (list.some((u) => u.length > MAX_IMAGE_CHARS)) fail(413, 'One of the photos is too large. Try again; the app shrinks photos before sending.');
+  const data = await askAi(
+    env,
+    `These ${list.length > 1 ? `${list.length} photos show one recipe, in order` : 'photo shows a recipe'} from a cookbook, a printout or a handwritten card. ` +
+      'Read it carefully and structure it exactly as written, keeping the quantities. ' +
+      'If a word is hard to read, make your best guess and mention it in "notes".',
+    list,
+  );
+  return { recipe: fromAi(data), method: 'photo' };
 }

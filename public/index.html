@@ -12,7 +12,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/assets/app.css?v=1">
+<script>try{var d=document.documentElement,t=localStorage.getItem('rb-theme'),a=localStorage.getItem('rb-accent');if(t)d.dataset.theme=t;if(a)d.dataset.accent=a}catch(e){}</script>
+<link rel="stylesheet" href="/assets/app.css?v=2">
 </head>
 <body>
 <header class="top">
@@ -52,6 +53,7 @@
           </label>
           <button class="btn btn-primary" id="new-recipe" type="button">Add recipe</button>
         </div>
+        <div id="recipe-filters" class="filters" role="group" aria-label="Recipe type" hidden></div>
         <div id="recipe-cards" class="recipe-cards"></div>
       </aside>
       <article class="detail" id="detail" aria-live="polite"></article>
@@ -111,12 +113,24 @@
       <button class="icon-btn" value="cancel" aria-label="Close">&times;</button>
     </div>
     <div class="add-tabs" role="tablist">
+      <button type="button" role="tab" class="add-tab" data-mode="photo" aria-selected="false">Photo</button>
       <button type="button" role="tab" class="add-tab" data-mode="link" aria-selected="true">From a link</button>
       <button type="button" role="tab" class="add-tab" data-mode="paste" aria-selected="false">Paste text</button>
       <button type="button" role="tab" class="add-tab" data-mode="generate" aria-selected="false">Ask AI</button>
       <button type="button" role="tab" class="add-tab" data-mode="manual" aria-selected="false">Write it</button>
     </div>
-    <div class="add-pane" data-pane="link">
+    <div class="add-pane" data-pane="photo" hidden>
+      <div class="photo-row">
+        <label class="photo-pick">
+          <input id="photo-input" type="file" accept="image/*" capture="environment" multiple>
+          <span class="photo-pick-icon" aria-hidden="true"></span>
+          <span id="photo-pick-label">Take or choose a photo</span>
+        </label>
+        <div id="photo-thumbs" class="photo-thumbs"></div>
+      </div>
+      <p class="hint">A cookbook page, a recipe card or handwriting. If it runs over two pages, add both (up to 3).</p>
+    </div>
+    <div class="add-pane" data-pane="link" hidden>
       <label class="field"><span>Recipe link</span>
         <input id="ai-url" type="url" inputmode="url" placeholder="https://www.example.com/chicken-karahi" autocomplete="off">
       </label>
@@ -152,6 +166,23 @@
     </div>
     <p class="muted" id="signed-in-as"></p>
 
+    <h3>Appearance</h3>
+    <div class="appearance">
+      <div class="segmented" role="group" aria-label="Theme">
+        <button type="button" data-act="set-theme" data-value="" aria-pressed="true">Match device</button>
+        <button type="button" data-act="set-theme" data-value="light" aria-pressed="false">Light</button>
+        <button type="button" data-act="set-theme" data-value="dark" aria-pressed="false">Dark</button>
+      </div>
+      <div class="swatches" role="group" aria-label="Colour">
+        <button type="button" class="swatch" title="Herb green" data-act="set-accent" data-value="" style="--sw:#2f6b4f" aria-pressed="true"><span class="sr-only">Herb green</span></button>
+        <button type="button" class="swatch" title="Saffron" data-act="set-accent" data-value="saffron" style="--sw:#b5760f" aria-pressed="false"><span class="sr-only">Saffron</span></button>
+        <button type="button" class="swatch" title="Tomato" data-act="set-accent" data-value="tomato" style="--sw:#b23f2c" aria-pressed="false"><span class="sr-only">Tomato</span></button>
+        <button type="button" class="swatch" title="Ocean" data-act="set-accent" data-value="ocean" style="--sw:#25628a" aria-pressed="false"><span class="sr-only">Ocean</span></button>
+        <button type="button" class="swatch" title="Plum" data-act="set-accent" data-value="plum" style="--sw:#7a4673" aria-pressed="false"><span class="sr-only">Plum</span></button>
+      </div>
+      <p class="hint">Saved on this device.</p>
+    </div>
+
     <h3>People who can use this board</h3>
     <ul class="people" id="people"></ul>
     <form class="stack" id="add-person">
@@ -182,6 +213,6 @@
 
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
-<script type="module" src="/assets/app.js?v=1"></script>
+<script type="module" src="/assets/app.js?v=2"></script>
 </body>
 </html>

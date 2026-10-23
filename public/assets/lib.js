@@ -1,7 +1,7 @@
 // Pure helpers: parsing ingredient lines, naming, grouping and quantities.
 // Kept free of DOM code so they can be tested with `node --test`.
 
-const FRACTIONS = { "½": 1 / 2, "⅓": 1 / 3, "⅔": 2 / 3, "¼": 1 / 4, "¾": 3 / 4, "⅛": 1 / 8 };
+const FRACTIONS = { "½": 1 / 2, "⅓": 1 / 3, "⅔": 2 / 3, "¼": 1 / 4, "¾": 3 / 4, "⅛": 1 / 8, "⅜": 3 / 8, "⅝": 5 / 8, "⅞": 7 / 8 };
 
 const UNITS = {
   cup: "cup", cups: "cup", c: "cup",
@@ -47,14 +47,14 @@ const AISLE_WORDS = [
     "chili", "chilli", "kale", "eggplant", "cauliflower", "okra", "mango", "orange", "herb", "dill", "leek"]],
 ];
 
-const NUM = "(?:\\d+\\s+\\d+\\/\\d+|\\d+\\/\\d+|\\d*\\.?\\d+\\s*[½⅓⅔¼¾⅛]?|[½⅓⅔¼¾⅛])";
+const NUM = "(?:\\d+\\s+\\d+\\/\\d+|\\d+\\/\\d+|\\d*\\.?\\d+\\s*[½⅓⅔¼¾⅛⅜⅝⅞]?|[½⅓⅔¼¾⅛⅜⅝⅞])";
 const QTY_RE = new RegExp(`^(${NUM})(?:\\s*(?:-|–|to)\\s*${NUM})?\\s*(.*)$`);
 
 function toNumber(text) {
   text = text.trim();
   let total = 0;
   for (const part of text.split(/\s+/)) {
-    const frac = part.match(/^(\d*\.?\d*)([½⅓⅔¼¾⅛])$/);
+    const frac = part.match(/^(\d*\.?\d*)([½⅓⅔¼¾⅛⅜⅝⅞])$/);
     if (frac) {
       total += (frac[1] ? parseFloat(frac[1]) : 0) + FRACTIONS[frac[2]];
     } else if (part.includes("/")) {
@@ -93,11 +93,132 @@ export function parseIngredient(line) {
   return { qty, unit, item: s };
 }
 
+/**
+ * A line that starts a part of a recipe, like "## Marinade", "For the sauce:"
+ * or "RAITA". Returns the part's name, or null for an ordinary line.
+ */
+export function sectionHeader(line) {
+  const s = String(line).trim();
+  if (!s) return null;
+  let m = s.match(/^#+\s*(.+?)\s*:?$/);
+  if (m) return cleanHeader(m[1]);
+  m = s.match(/^(?:for\s+(?:the\s+)?)?([^\d½⅓⅔¼¾⅛⅜⅝⅞:][^:]{0,50}):$/i);
+  if (m) return cleanHeader(m[1]);
+  return null;
+}
+
+function cleanHeader(text) {
+  let t = text.replace(/^for\s+(?:the\s+)?/i, "").replace(/\*+/g, "").trim();
+  if (t === t.toUpperCase()) t = t.toLowerCase();
+  return t ? t.charAt(0).toUpperCase() + t.slice(1) : null;
+}
+
+/** One ingredient per line; header lines start a named part (ingredient.group). */
 export function parseIngredients(text) {
-  return String(text || "")
-    .split(/\r?\n/)
-    .map(parseIngredient)
-    .filter(Boolean);
+  const out = [];
+  let group = "";
+  for (const line of String(text || "").split(/\r?\n/)) {
+    const header = sectionHeader(line);
+    if (header) {
+      group = header;
+      continue;
+    }
+    const ing = parseIngredient(line);
+    if (ing) out.push(group ? { ...ing, group } : ing);
+  }
+  return out;
+}
+
+/** One step per line; header lines are kept as "## Part" entries. */
+export function parseSteps(text) {
+  const out = [];
+  for (const line of String(text || "").split(/\r?\n/)) {
+    const header = sectionHeader(line);
+    if (header) out.push(`## ${header}`);
+    else {
+      const step = line.replace(/^\s*(?:step\s*)?\d+[.):]\s*/i, "").trim();
+      if (step) out.push(step);
+    }
+  }
+  return out;
+}
+
+/** Ingredients back to editable text, with "## Part" lines between parts. */
+export function ingredientsToText(ingredients) {
+  const lines = [];
+  let group = "";
+  for (const ing of ingredients || []) {
+    if ((ing.group || "") !== group) {
+      group = ing.group || "";
+      if (lines.length) lines.push("");
+      lines.push(group ? `## ${group}` : "## Other");
+    }
+    lines.push(formatIngredient(ing));
+  }
+  return lines.join("\n");
+}
+
+/** [{ group, items: [{ ing, index }] }] in recipe order. */
+export function ingredientSections(ingredients) {
+  const sections = [];
+  (ingredients || []).forEach((ing, index) => {
+    const group = ing.group || "";
+    let sec = sections.find((s) => s.group === group);
+    if (!sec) sections.push((sec = { group, items: [] }));
+    sec.items.push({ ing, index });
+  });
+  return sections;
+}
+
+/** [{ group, steps: [text] }] from a steps array that may contain "## Part" entries. */
+export function stepSections(steps) {
+  const sections = [{ group: "", steps: [] }];
+  for (const step of steps || []) {
+    const m = String(step).match(/^##\s*(.+)$/);
+    if (m) sections.push({ group: m[1].trim(), steps: [] });
+    else sections[sections.length - 1].steps.push(step);
+  }
+  return sections.filter((s) => s.steps.length || s.group);
+}
+
+/* ------------------------------- Scaling -------------------------------- */
+
+// Bigger units read better once an amount grows: 12 tsp -> 4 tbsp -> ¼ cup.
+const UP = [
+  ["tsp", 3, "tbsp"],
+  ["tbsp", 4, "cup", 16],
+  ["g", 1000, "kg"],
+  ["ml", 1000, "l"],
+  ["oz", 16, "lb"],
+];
+
+/** Scale an amount and tidy its unit. */
+export function scaleAmount(qty, unit, factor) {
+  if (qty == null) return { qty: null, unit: unit || "" };
+  let q = qty * factor;
+  let u = unit || "";
+  for (const [from, at, to, per] of UP) {
+    if (u === from && q >= at) {
+      q = q / (per || at);
+      u = to;
+    }
+  }
+  // Kitchen amounts: 0.3125 tsp reads as ⅓ tsp, 1.6 cup as 1⅝ cup.
+  if (factor !== 1 && q < 10 && !["g", "kg", "ml", "l"].includes(u)) q = nearestKitchen(q);
+  return { qty: Math.round(q * 1000) / 1000, unit: u };
+}
+
+function nearestKitchen(q) {
+  const whole = Math.floor(q);
+  const steps = [0, 1 / 8, 1 / 4, 1 / 3, 3 / 8, 1 / 2, 5 / 8, 2 / 3, 3 / 4, 7 / 8, 1];
+  const frac = steps.reduce((best, s) => (Math.abs(q - whole - s) < Math.abs(q - whole - best) ? s : best));
+  return whole + frac || 1 / 8;
+}
+
+/** How much to multiply a recipe by for its chosen serving size. */
+export function recipeFactor(recipe) {
+  const f = Number(recipe?.scale);
+  return f > 0 ? f : 1;
 }
 
 /** The name to shop for: drops prep notes after a comma and anything in brackets. */
