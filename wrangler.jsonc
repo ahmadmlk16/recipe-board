@@ -1,0 +1,18 @@
+{
+  // Cloudflare Worker settings. Workers Builds runs `npx wrangler deploy`,
+  // which reads this file, so the bindings below are set up automatically:
+  // the D1 database is created on the first deploy if it doesn't exist yet,
+  // and its tables are created on the first request.
+  "$schema": "https://unpkg.com/wrangler@4/config-schema.json",
+  "name": "recipe-board",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [{ "binding": "DB", "database_name": "recipe-board-db" }],
+  "ai": { "binding": "AI" },
+  "observability": { "enabled": true }
+}

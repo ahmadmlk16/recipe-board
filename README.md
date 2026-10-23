@@ -29,13 +29,15 @@ public/              static files
   assets/lib.js      ingredient parsing, aisles, amounts (shared with the server)
   assets/app.css     styles (light and dark)
 functions/
-  api/[[path]].js    "/api/*" JSON API
-src/                 server code used by the functions
+  api/[[path]].js    "/api/*" JSON API (Pages)
+src/                 server code
+  worker.js          entry point when deployed as a Worker
   api.js             all API endpoints
   auth.js            password hashing (PBKDF2), sessions, rate limiting
   db.js              D1 schema (auto-created on first request)
   recipes.js         recipe and grocery item shapes, validated on save
   ai.js              import from link, parse text, generate (Workers AI)
+wrangler.jsonc       Worker settings and bindings
 dev/server.mjs       local test server (Node 22+, no install needed)
 test/                unit tests: node --test test/*.test.mjs
 ```
@@ -58,6 +60,19 @@ The food board is meant to become one board inside a bigger **Life Board**. It i
 - Logins, sessions and the API router are shared, so a new board is a new set of routes in `src/` plus a new section in `public/`.
 
 ## Cloudflare settings
+
+The app deploys either as a **Worker** (the live setup) or as a **Pages** project. Same code; pick one.
+
+### As a Worker (current)
+
+`wrangler.jsonc` holds the settings, so there is little to click:
+
+- **Settings → Build**: Git repository `ahmadmlk16/recipe-board`, production branch `prod`, build command empty, deploy command `npx wrangler deploy`.
+- The D1 database `recipe-board-db` and the Workers AI binding come from `wrangler.jsonc`; the database is created on the first deploy.
+- **Settings → Variables and Secrets**: add `SETUP_KEY` as a Secret (plus `AI_DAILY_LIMIT` / `AI_MODEL` if wanted).
+- Branch pushes get preview URLs, but they share the production database.
+
+### As a Pages project
 
 **Create the project**: Cloudflare dashboard → Workers & Pages → Create → Pages → Connect to Git → pick this repo.
 
