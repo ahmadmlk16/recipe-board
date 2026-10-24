@@ -37,7 +37,13 @@ const env = { DB, SETUP_KEY: process.env.SETUP_KEY || 'dev-setup-key' };
 /* --------------------------- Workers AI mock -------------------------- */
 if (process.env.MOCK_AI) {
   env.AI = {
-    async run(model, { messages }) {
+    async run(model, { messages, image, prompt }) {
+      if (prompt) return { response: 'ok' };
+      if (image || Array.isArray(messages.at(-1).content)) {
+        // MOCK_VISION_FAIL=1 makes the first vision model fail, to exercise the fallback.
+        if (process.env.MOCK_VISION_FAIL && model.includes('llama-4')) throw new Error('5006: mock vision failure');
+        return { response: 'CHANA MASALA\nServes 4\n2 cans chickpeas\n1 onion\nFry the onion. Add chickpeas.' };
+      }
       const ask = messages.at(-1).content.slice(0, 60);
       return {
         response: {

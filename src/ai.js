@@ -205,15 +205,12 @@ function fromAi(data, sourceUrl = '') {
   };
 }
 
-async function askAi(env, userPrompt, images = []) {
+async function askAi(env, userPrompt) {
   if (!env.AI) fail(503, 'AI is not connected yet. Add the Workers AI binding named AI in Cloudflare.');
-  const model = images.length ? env.AI_VISION_MODEL || DEFAULT_VISION_MODEL : env.AI_MODEL || DEFAULT_MODEL;
-  const content = images.length
-    ? [{ type: 'text', text: userPrompt }, ...images.map((url) => ({ type: 'image_url', image_url: { url } }))]
-    : userPrompt;
+  const model = env.AI_MODEL || DEFAULT_MODEL;
   const messages = [
     { role: 'system', content: SYSTEM },
-    { role: 'user', content },
+    { role: 'user', content: userPrompt },
   ];
   let result;
   try {
@@ -301,18 +298,75 @@ export async function generate(env, prompt) {
 }
 
 export async function readPhotos(env, images) {
+  if (!env.AI) fail(503, 'AI is not connected yet. Add the Workers AI binding named AI in Cloudflare.');
   const list = (Array.isArray(images) ? images : []).filter(
     (u) => typeof u === 'string' && /^data:image\/(jpeg|png|webp);base64,/.test(u),
   );
   if (!list.length) fail(400, 'Add a photo of the recipe first.');
   if (list.length > MAX_IMAGES) fail(400, `Use at most ${MAX_IMAGES} photos at a time.`);
   if (list.some((u) => u.length > MAX_IMAGE_CHARS)) fail(413, 'One of the photos is too large. Try again; the app shrinks photos before sending.');
+  // Two steps: a vision model copies out the text of each page, then the text
+  // model structures it the same way pasted text is structured.
+  const pages = [];
+  for (const url of list) pages.push(await transcribe(env, url));
+  const text = pages.join('\n\n').slice(0, MAX_TEXT);
   const data = await askAi(
     env,
-    `These ${list.length > 1 ? `${list.length} photos show one recipe, in order` : 'photo shows a recipe'} from a cookbook, a printout or a handwritten card. ` +
-      'Read it carefully and structure it exactly as written, keeping the quantities. ' +
-      'If a word is hard to read, make your best guess and mention it in "notes".',
-    list,
+    'This text was copied from a photo of a recipe (a cookbook page, a printout or a handwritten card). ' +
+      'Structure it exactly as written, keeping the quantities. Ignore page numbers and text from other recipes. ' +
+      'If a word looks garbled, make your best guess and mention it in "notes".\n\n' + text,
   );
   return { recipe: fromAi(data), method: 'photo' };
 }
+
+const TRANSCRIBE_PROMPT =
+  'Copy out all the text of the recipe in this photo, exactly as written: the title, servings, every ingredient line with its amount, ' +
+  'and every step. Keep headings like "For the sauce". Reply with the text only.';
+
+/** Copy the text out of one photo, trying a few vision models in turn. */
+async function transcribe(env, dataUrl) {
+  const base64 = dataUrl.slice(dataUrl.indexOf(',') + 1);
+  const withImageUrl = {
+    messages: [{ role: 'user', content: [{ type: 'text', text: TRANSCRIBE_PROMPT }, { type: 'image_url', image_url: { url: dataUrl } }] }],
+    max_tokens: 2048,
+    temperature: 0,
+  };
+  const attempts = [
+    [env.AI_VISION_MODEL || DEFAULT_VISION_MODEL, withImageUrl],
+    ['@cf/meta/llama-3.2-11b-vision-instruct', { messages: [{ role: 'user', content: TRANSCRIBE_PROMPT }], image: base64, max_tokens: 2048, temperature: 0 }],
+    ['@cf/google/gemma-3-12b-it', withImageUrl],
+  ];
+  const errors = [];
+  for (const [model, input] of attempts) {
+    try {
+      let result;
+      try {
+        result = await runWithTimeout(env, model, input);
+      } catch (err) {
+        // Meta's vision model asks each account to accept its licence once.
+        if (!/agree|licen[cs]e/i.test(String(err?.message || ''))) throw err;
+        await env.AI.run(model, { prompt: 'agree' });
+        result = await runWithTimeout(env, model, input);
+      }
+      const text = typeof result?.response === 'string' ? result.response : typeof result === 'string' ? result : '';
+      if (text.trim().length >= 20) return text.trim();
+      errors.push(`${shortModel(model)}: no text`);
+    } catch (err) {
+      console.error('Vision error', model, err);
+      const msg = String(err?.message || err);
+      if (/quota|neuron|429|daily/i.test(msg)) fail(429, "Today's free AI allowance is used up. It resets at midnight UTC.");
+      errors.push(`${shortModel(model)}: ${msg.slice(0, 140)}`);
+    }
+  }
+  fail(502, `The AI could not read that photo. Try a closer, well-lit shot, or paste the text instead. (Details: ${errors.join(' | ')})`);
+}
+
+function runWithTimeout(env, model, input, ms = 50_000) {
+  let timer;
+  return Promise.race([
+    env.AI.run(model, input).finally(() => clearTimeout(timer)),
+    new Promise((_, reject) => (timer = setTimeout(() => reject(new Error('timed out')), ms))),
+  ]);
+}
+
+const shortModel = (m) => m.split('/').pop();
