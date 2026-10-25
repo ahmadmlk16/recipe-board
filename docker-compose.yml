@@ -49,10 +49,11 @@ services:
   ollama-pull:
     image: ollama/ollama:latest
     container_name: recipe-board-ollama-pull
-    restart: "no"
     environment:
       OLLAMA_HOST: http://ollama:11434
-    entrypoint: ["/bin/sh", "-c", "sleep 5 && ollama pull qwen2.5vl:7b"]
+    # Waits for the Ollama server, then tries the download up to 5 times.
+    entrypoint: ["/bin/sh", "-c", "until ollama list >/dev/null 2>&1; do sleep 3; done; for i in 1 2 3 4 5; do ollama pull qwen2.5vl:7b && exit 0; echo retrying in 30s; sleep 30; done; exit 1"]
+    restart: "no"
     depends_on:
       - ollama
 
