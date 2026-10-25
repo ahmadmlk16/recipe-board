@@ -1,6 +1,7 @@
 # Recipe Board on ZimaOS: App Store -> "+" -> Install a customized app ->
-# Import -> paste this file. Fill in SETUP_KEY, TUNNEL_TOKEN and the
-# watchtower token first.
+# Import -> paste this file. Fill in SETUP_KEY and TUNNEL_TOKEN first.
+# Auto-deploys come from the shared Deploy app in the ahmadmlk16/home-server
+# repo; the watchtower label on the app service opts it in.
 # Everything is kept under /DATA/AppData/recipe-board on the ZimaOS drive.
 name: recipe-board
 
@@ -69,23 +70,3 @@ services:
       TUNNEL_TOKEN: "paste-tunnel-token-here"
     depends_on:
       - app
-
-  # Auto-deploy, the way Workers Builds did: after a push to prod, GitHub
-  # Actions builds the image and calls this container's webhook
-  # (POST /v1/update with DEPLOY_TOKEN), and it swaps in the new image.
-  # It also checks every 5 minutes in case a webhook is missed.
-  # Only touches containers labelled above. Route a tunnel hostname such as
-  # deploy.yourdomain.com to http://watchtower:8080 for the webhook.
-  watchtower:
-    image: nickfedor/watchtower:latest
-    container_name: recipe-board-watchtower
-    restart: unless-stopped
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    environment:
-      WATCHTOWER_LABEL_ENABLE: "true"
-      WATCHTOWER_POLL_INTERVAL: "300"
-      WATCHTOWER_CLEANUP: "true"
-      WATCHTOWER_HTTP_API_UPDATE: "true"
-      WATCHTOWER_HTTP_API_PERIODIC_POLLS: "true"
-      WATCHTOWER_HTTP_API_TOKEN: "change-me-deploy-token" # same value as the DEPLOY_TOKEN secret on GitHub
