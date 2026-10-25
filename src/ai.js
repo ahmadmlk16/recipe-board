@@ -206,7 +206,7 @@ function fromAi(data, sourceUrl = '') {
 }
 
 async function askAi(env, userPrompt) {
-  if (!env.AI) fail(503, 'AI is not connected yet. Add the Workers AI binding named AI in Cloudflare.');
+  if (!env.AI) fail(503, 'AI is not connected yet. Add the Workers AI binding named AI in Cloudflare, or set AI_PROVIDER on the home server.');
   const model = env.AI_MODEL || DEFAULT_MODEL;
   const messages = [
     { role: 'system', content: SYSTEM },
@@ -298,7 +298,7 @@ export async function generate(env, prompt) {
 }
 
 export async function readPhotos(env, images) {
-  if (!env.AI) fail(503, 'AI is not connected yet. Add the Workers AI binding named AI in Cloudflare.');
+  if (!env.AI) fail(503, 'AI is not connected yet. Add the Workers AI binding named AI in Cloudflare, or set AI_PROVIDER on the home server.');
   const list = (Array.isArray(images) ? images : []).filter(
     (u) => typeof u === 'string' && /^data:image\/(jpeg|png|webp);base64,/.test(u),
   );
@@ -361,7 +361,8 @@ async function transcribe(env, dataUrl) {
   fail(502, `The AI could not read that photo. Try a closer, well-lit shot, or paste the text instead. (Details: ${errors.join(' | ')})`);
 }
 
-function runWithTimeout(env, model, input, ms = 50_000) {
+// AI_TIMEOUT_SECONDS gives slow home-server models longer than Workers AI needs.
+function runWithTimeout(env, model, input, ms = (Number(env.AI_TIMEOUT_SECONDS) || 50) * 1000) {
   let timer;
   return Promise.race([
     env.AI.run(model, input).finally(() => clearTimeout(timer)),
