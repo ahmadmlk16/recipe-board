@@ -1,0 +1,30 @@
+# Deploy: keeps your self-hosted web apps up to date. Shared by every app on
+# this server, so it is its own ZimaOS app.
+#
+# How it works: after a GitHub build, the repo's workflow calls
+# https://deploy.yourdomain.com/v1/update (tunnel -> port 8789) with the
+# token below. This pulls new images for every container labelled
+#   com.centurylinklabs.watchtower.enable: "true"
+# and restarts only the ones that changed. It also checks every 5 minutes
+# in case a call is missed.
+#
+# A new app joins by adding that label to its compose file and the
+# DEPLOY_URL / DEPLOY_TOKEN secrets to its GitHub repo.
+name: deploy
+
+services:
+  watchtower:
+    image: nickfedor/watchtower:latest
+    container_name: deploy-watchtower
+    restart: unless-stopped
+    ports:
+      - "8789:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      WATCHTOWER_LABEL_ENABLE: "true"
+      WATCHTOWER_POLL_INTERVAL: "300"
+      WATCHTOWER_CLEANUP: "true"
+      WATCHTOWER_HTTP_API_UPDATE: "true"
+      WATCHTOWER_HTTP_API_PERIODIC_POLLS: "true"
+      WATCHTOWER_HTTP_API_TOKEN: "change-me-deploy-token" # = DEPLOY_TOKEN secret in each GitHub repo
