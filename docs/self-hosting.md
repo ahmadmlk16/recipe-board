@@ -9,7 +9,7 @@ has on Cloudflare. What replaces each Cloudflare piece:
 | D1 database | SQLite file at `/DATA/AppData/recipe-board/data/recipe-board.sqlite` |
 | Workers AI | `ollama` container on the GPU, model `qwen2.5vl:7b` (reads photos and text) |
 | `*.workers.dev` / custom domain, HTTPS | `tunnel` container (Cloudflare Tunnel), or Tailscale |
-| Workers Builds (push to `prod` deploys) | GitHub Actions builds the image and calls a deploy webhook; the separate Deploy app (`deploy/docker-compose.yml`, Watchtower) swaps it in, with a 5-minute check as backup |
+| Workers Builds (push to `prod` deploys) | GitHub Actions builds the image and calls a deploy webhook; the shared Deploy app (Watchtower, in the `ahmadmlk16/home-server` repo) swaps it in, with a 5-minute check as backup |
 | Variables and Secrets | `environment:` in `docker-compose.yml` |
 
 The Cloudflare code path still works, so the Worker can keep running until the
@@ -96,15 +96,15 @@ whose image changed.
 One-time setup:
 
 1. Make up a long random token and put it in `WATCHTOWER_HTTP_API_TOKEN` in
-   `deploy/docker-compose.yml`, then install that file as its own ZimaOS app
+   `deploy/docker-compose.yml` from the `ahmadmlk16/home-server` repo, then install that file as its own ZimaOS app
    (App Store → **+** → Install a customized app → Import).
 2. In the Cloudflare tunnel, add a public hostname, e.g.
    `deploy.yourdomain.com` → `HTTP` → `<zimaos-ip>:8789`.
 3. GitHub → repo → Settings → Secrets and variables → Actions → add
    `DEPLOY_URL` = `https://deploy.yourdomain.com` and `DEPLOY_TOKEN` = the token.
 
-A future app joins by adding the label to its compose file, copying
-`.github/workflows/docker.yml`, and adding the same two secrets to its repo.
+A future app joins as described in the `home-server` repo's README: the
+label in its compose file, the shared workflow, and the same two secrets.
 
 Without the webhook (for example on Tailscale only), the server still notices
 the new image within 5 minutes. To roll back, set the app's image to an older

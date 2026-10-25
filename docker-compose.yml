@@ -1,7 +1,7 @@
 # Recipe Board on ZimaOS: App Store -> "+" -> Install a customized app ->
 # Import -> paste this file. Fill in SETUP_KEY and TUNNEL_TOKEN first.
-# Auto-deploys come from the separate Deploy app in deploy/docker-compose.yml;
-# the watchtower label on the app service opts it in.
+# Auto-deploys come from the shared Deploy app in the ahmadmlk16/home-server
+# repo; the watchtower label on the app service opts it in.
 # Everything is kept under /DATA/AppData/recipe-board on the ZimaOS drive.
 name: recipe-board
 
