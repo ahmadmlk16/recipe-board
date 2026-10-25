@@ -48,4 +48,4 @@ jobs:
             echo "DEPLOY_URL / DEPLOY_TOKEN not set; the server picks up the image on its 5-minute check."
             exit 0
           fi
-          curl -fsS --max-time 120 -H "Authorization: Bearer $DEPLOY_TOKEN" "${DEPLOY_URL%/}/v1/update"
+          curl -fsS -X POST --max-time 120 -H "Authorization: Bearer $DEPLOY_TOKEN" "${DEPLOY_URL%/}/v1/update"
