@@ -1,6 +1,6 @@
 # Recipe Board
 
-A private recipe board for the household, hosted on Cloudflare Pages (free tier).
+A private recipe board for the household. Runs on Cloudflare (Worker or Pages, free tier) or on a home server with Docker; see [Self-hosting on ZimaOS](docs/self-hosting.md).
 
 - **Recipes** (`/#recipes`): your saved recipes with ingredients, method, notes and nutrition per serving. Tick an ingredient and it goes on the grocery list; "Add all to list" adds the rest.
 - **Ingredients** (`/#ingredients`): every ingredient your recipes use, grouped by supermarket aisle, with a chip for each recipe that needs it. Tap a chip to shop for that recipe, or tick the row to shop for all of them.
@@ -41,6 +41,12 @@ src/                 server code
   db.js              D1 schema (auto-created on first request)
   recipes.js         recipe and grocery item shapes, validated on save
   ai.js              photo, import from link, parse text, generate (Workers AI)
+server/              home-server runtime (Docker / ZimaOS), see docs/self-hosting.md
+  main.mjs           HTTP server: static files, _headers, /api/*
+  d1.mjs             D1-style database on Node's built-in SQLite
+  ai.mjs             env.AI for Ollama / OpenAI-compatible, Anthropic, or Workers AI REST
+  import-d1.mjs      loads a `wrangler d1 export` file
+Dockerfile, docker-compose.yml   image and the ZimaOS app definition
 wrangler.jsonc       Worker settings and bindings
 dev/server.mjs       local test server (Node 22+, no install needed)
 test/                unit tests: node --test test/*.test.mjs
@@ -62,6 +68,10 @@ The food board is meant to become one board inside a bigger **Life Board**. It i
 - New boards add their own collections to the same `docs` table (for example `meals` for a food log, `tasks` for a Jira-style board). No schema migration is needed.
 - Recipes already store nutrition per serving, so a calorie tracker can log "1.5 servings of Chicken karahi" and add up the day.
 - Logins, sessions and the API router are shared, so a new board is a new set of routes in `src/` plus a new section in `public/`.
+
+## Home server (ZimaOS)
+
+See [docs/self-hosting.md](docs/self-hosting.md): one Docker app with a SQLite file, Ollama on the GPU for AI, and Cloudflare Tunnel or Tailscale for the public address. Pushes to `prod` build a new image that the server picks up automatically.
 
 ## Cloudflare settings
 

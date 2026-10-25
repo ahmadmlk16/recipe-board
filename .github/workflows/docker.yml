@@ -1,0 +1,51 @@
+# Builds the home-server image on every push. The prod branch is tagged
+# "latest" (what ZimaOS runs); main is tagged "main" for trying changes first.
+# After a prod build, the deploy webhook tells the server to pull it now.
+# Repository secrets: DEPLOY_URL (e.g. https://deploy.yourdomain.com) and
+# DEPLOY_TOKEN (same as WATCHTOWER_HTTP_API_TOKEN in docker-compose.yml).
+name: Docker image
+
+on:
+  push:
+    branches: [main, prod]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm test
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}:${{ github.ref_name == 'prod' && 'latest' || github.ref_name }}
+            ghcr.io/${{ github.repository }}:sha-${{ github.sha }}
+      - name: Tell the home server to update
+        if: github.ref_name == 'prod'
+        env:
+          DEPLOY_URL: ${{ secrets.DEPLOY_URL }}
+          DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
+        run: |
+          if [ -z "$DEPLOY_URL" ] || [ -z "$DEPLOY_TOKEN" ]; then
+            echo "DEPLOY_URL / DEPLOY_TOKEN not set; the server picks up the image on its 5-minute check."
+            exit 0
+          fi
+          curl -fsS --max-time 120 -H "Authorization: Bearer $DEPLOY_TOKEN" "${DEPLOY_URL%/}/v1/update"
