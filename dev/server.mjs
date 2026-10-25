@@ -2,35 +2,17 @@
 // Usage: node dev/server.mjs  (then open http://localhost:8788, setup key: dev-setup-key)
 //        MOCK_AI=1 node dev/server.mjs   answers AI requests with a canned recipe
 // Real deployments do not use this file.
-import { DatabaseSync } from 'node:sqlite';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { Readable } from 'node:stream';
+import { openD1 } from '../server/d1.mjs';
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 const dataDir = path.join(root, '.dev-data');
 fs.mkdirSync(dataDir, { recursive: true });
 
-/* ----------------------------- D1 shim ----------------------------- */
-const sqlite = new DatabaseSync(process.env.DEV_DB || path.join(dataDir, 'd1.sqlite'));
-sqlite.exec('PRAGMA foreign_keys = ON');
-const norm = (v) => (v === undefined ? (() => { throw new Error('D1_TYPE_ERROR: undefined bind'); })() : typeof v === 'boolean' ? (() => { throw new Error('D1_TYPE_ERROR: boolean bind'); })() : v);
-class Stmt {
-  constructor(sql, params = []) { this.sql = sql; this.params = params; }
-  bind(...p) { return new Stmt(this.sql, p.map(norm)); }
-  async first(col) { const r = sqlite.prepare(this.sql).get(...this.params); return r ? (col ? r[col] : { ...r }) : null; }
-  async all() { return { results: sqlite.prepare(this.sql).all(...this.params).map((r) => ({ ...r })), success: true }; }
-  async run() { const r = sqlite.prepare(this.sql).run(...this.params); return { success: true, meta: { changes: r.changes, last_row_id: Number(r.lastInsertRowid) } }; }
-}
-const DB = {
-  prepare: (sql) => new Stmt(sql),
-  async batch(stmts) {
-    sqlite.exec('BEGIN');
-    try { const out = []; for (const s of stmts) out.push(await s.run()); sqlite.exec('COMMIT'); return out; }
-    catch (e) { sqlite.exec('ROLLBACK'); throw e; }
-  },
-};
+const DB = openD1(process.env.DEV_DB || path.join(dataDir, 'd1.sqlite'));
 
 const env = { DB, SETUP_KEY: process.env.SETUP_KEY || 'dev-setup-key' };
 

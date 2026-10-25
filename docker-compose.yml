@@ -1,0 +1,90 @@
+# Recipe Board on ZimaOS: App Store -> "+" -> Install a customized app ->
+# Import -> paste this file. Fill in SETUP_KEY, TUNNEL_TOKEN and the
+# watchtower token first.
+# Everything is kept under /DATA/AppData/recipe-board on the ZimaOS drive.
+name: recipe-board
+
+services:
+  app:
+    image: ghcr.io/ahmadmlk16/recipe-board:latest
+    container_name: recipe-board
+    restart: unless-stopped
+    ports:
+      - "8788:8788" # http://<zimaos-ip>:8788 on your home network
+    volumes:
+      - /DATA/AppData/recipe-board/data:/data
+    environment:
+      SETUP_KEY: "change-me" # one-time key to create the first login
+      TRUST_PROXY: "1" # requests arrive through the tunnel container
+      AI_PROVIDER: openai # Ollama speaks the OpenAI API
+      AI_BASE_URL: http://ollama:11434/v1
+      AI_MODEL: qwen2.5vl:7b # structures pasted text and "ask AI" recipes
+      AI_VISION_MODEL: qwen2.5vl:7b # reads recipe photos; same model, so it stays loaded
+      AI_TIMEOUT_SECONDS: "120"
+      AI_DAILY_LIMIT: "200"
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
+    depends_on:
+      - ollama
+
+  # Local AI on the RTX 3060. Models live on the ZimaOS drive.
+  ollama:
+    image: ollama/ollama:latest
+    container_name: recipe-board-ollama
+    restart: unless-stopped
+    volumes:
+      - /DATA/AppData/recipe-board/ollama:/root/.ollama
+    environment:
+      OLLAMA_KEEP_ALIVE: 24h # keep the model in GPU memory between requests
+      OLLAMA_CONTEXT_LENGTH: "8192" # room for a photo plus a long recipe
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # Downloads the model once (about 6 GB), then exits.
+  ollama-pull:
+    image: ollama/ollama:latest
+    container_name: recipe-board-ollama-pull
+    restart: "no"
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["/bin/sh", "-c", "sleep 5 && ollama pull qwen2.5vl:7b"]
+    depends_on:
+      - ollama
+
+  # Public HTTPS address through Cloudflare Tunnel: no ports opened on the router.
+  # Create the tunnel in Cloudflare Zero Trust -> Networks -> Tunnels, point its
+  # public hostname at http://app:8788, and paste the token here.
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: recipe-board-tunnel
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: "paste-tunnel-token-here"
+    depends_on:
+      - app
+
+  # Auto-deploy, the way Workers Builds did: after a push to prod, GitHub
+  # Actions builds the image and calls this container's webhook
+  # (POST /v1/update with DEPLOY_TOKEN), and it swaps in the new image.
+  # It also checks every 5 minutes in case a webhook is missed.
+  # Only touches containers labelled above. Route a tunnel hostname such as
+  # deploy.yourdomain.com to http://watchtower:8080 for the webhook.
+  watchtower:
+    image: nickfedor/watchtower:latest
+    container_name: recipe-board-watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      WATCHTOWER_LABEL_ENABLE: "true"
+      WATCHTOWER_POLL_INTERVAL: "300"
+      WATCHTOWER_CLEANUP: "true"
+      WATCHTOWER_HTTP_API_UPDATE: "true"
+      WATCHTOWER_HTTP_API_PERIODIC_POLLS: "true"
+      WATCHTOWER_HTTP_API_TOKEN: "change-me-deploy-token" # same value as the DEPLOY_TOKEN secret on GitHub

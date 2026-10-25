@@ -1,0 +1,9 @@
+.git
+.data
+.dev-data
+.wrangler
+node_modules
+test
+dev
+functions
+*.md

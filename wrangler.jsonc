@@ -14,6 +14,11 @@
   },
   "d1_databases": [{ "binding": "DB", "database_name": "recipe-board-db" }],
   "ai": { "binding": "AI" },
+  // Bindings for branch preview builds (`wrangler preview`), which Workers
+  // Builds runs for pull requests.
+  "previews": {
+    "ai": { "binding": "AI" }
+  },
   // Keep variables added in the dashboard (Settings -> Variables and Secrets)
   // when a new build deploys; without this, plain-text variables are wiped.
   "keep_vars": true,
