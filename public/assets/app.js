@@ -12,10 +12,12 @@ import {
   parseIngredients,
   parseSteps,
   recipeFactor,
+  recipeSpeech,
   scaleAmount,
   stepSections,
   titleCase,
 } from './lib.js';
+import { canListen, listen, retryServerVoice, speak, stopSpeaking, unlockAudio } from './talk.js';
 
 const CATEGORIES = ['Breakfast', 'Lunch', 'Dinner', 'Dessert', 'Snack', 'Drink', 'Other'];
 const AISLE_NAME = Object.fromEntries(AISLES);
@@ -32,6 +34,9 @@ const ui = {
   addMode: matchMedia('(pointer: coarse)').matches ? 'photo' : 'link',
   filter: readPref('rb-filter', ''),
   photos: [], // data URLs waiting to be read
+  listening: null, // function that stops listening, while the mic is on
+  talkReply: false, // read the next "ask AI" recipe aloud
+  reading: null, // id of the recipe being read aloud, or 'ai'
 };
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -438,6 +443,7 @@ function renderDetail() {
       ),
       el('div', { class: 'detail-actions' },
         el('button', { class: 'btn', type: 'button', 'data-act': 'edit', text: 'Edit' }),
+        el('button', { class: 'btn btn-ghost', type: 'button', 'data-act': 'read-aloud', 'aria-pressed': String(ui.reading === r.id), text: ui.reading === r.id ? 'Stop reading' : 'Read aloud' }),
         ui.confirmDelete
           ? el('span', { class: 'confirm' },
               el('span', { text: 'Delete this recipe?' }),
@@ -968,13 +974,86 @@ async function runAdd() {
       recipe.fromPhoto = true;
     }
     startEditing(newId(), recipe);
+    if (ui.talkReply) readAloud('ai', recipe.name, recipeSpeech(recipe, { brief: true }));
   } catch (err) {
     errBox.textContent = err.message;
     errBox.hidden = false;
+    if (ui.talkReply) readAloud('ai', '', `Sorry. ${err.message}`);
   } finally {
+    ui.talkReply = false;
     go.disabled = false;
     go.textContent = ADD_LABELS[mode];
   }
+}
+
+/* ---------------------------------- Talk ---------------------------------- */
+
+function readAloud(id, title, text) {
+  ui.reading = id;
+  updateReadButton();
+  speak(text, {
+    onState(state) {
+      const bar = $('#talk-bar');
+      if (state === 'done') {
+        if (ui.reading === id) ui.reading = null;
+        bar.hidden = !ui.reading; // unless something else started reading
+        updateReadButton();
+        return;
+      }
+      $('#talk-bar-text').textContent = state === 'loading' ? 'Getting the voice ready…' : title ? `Reading ${title}` : 'Reading aloud';
+      bar.hidden = false;
+    },
+  });
+}
+
+// Changes only the button, so reading doesn't redraw the recipe or the editor.
+function updateReadButton() {
+  const b = $('[data-act="read-aloud"]');
+  if (!b) return;
+  const on = !!ui.reading && ui.reading === ui.selected;
+  b.textContent = on ? 'Stop reading' : 'Read aloud';
+  b.setAttribute('aria-pressed', String(on));
+}
+
+function setListening(on) {
+  $('#talk-btn').setAttribute('aria-pressed', String(on));
+  $('#talk-btn').classList.toggle('is-listening', on);
+  $('#talk-label').textContent = on ? 'Listening… tap to stop' : 'Talk';
+  $('#add-go').disabled = on;
+}
+
+function startTalking() {
+  if (ui.listening) return ui.listening();
+  unlockAudio(); // while we still have the tap
+  stopSpeaking();
+  const box = $('#ai-prompt');
+  const errBox = $('#add-error');
+  const before = box.value;
+  errBox.hidden = true;
+  setListening(true);
+  ui.listening = listen({
+    onText: (text) => (box.value = text),
+    onDone(text) {
+      ui.listening = null;
+      setListening(false);
+      if (!text) {
+        box.value = before;
+        errBox.textContent = "I didn't hear anything. Tap Talk and try again.";
+        errBox.hidden = false;
+        return;
+      }
+      if (!$('#add-dialog').open) return;
+      ui.talkReply = true;
+      runAdd();
+    },
+    onError(message) {
+      ui.listening = null;
+      setListening(false);
+      box.value = box.value || before;
+      errBox.textContent = message;
+      errBox.hidden = false;
+    },
+  });
 }
 
 /* ------------------------------- Appearance ------------------------------- */
@@ -1097,6 +1176,12 @@ document.addEventListener('click', async (e) => {
     renderRecipes();
   } else if (act === 'edit' && r) {
     startEditing(r.id, r);
+  } else if (act === 'read-aloud' && r) {
+    if (ui.reading === r.id) stopSpeaking();
+    else {
+      unlockAudio();
+      readAloud(r.id, r.name, recipeSpeech(r));
+    }
   } else if (act === 'cancel-edit') {
     ui.editing = null;
     renderRecipes();
@@ -1204,6 +1289,10 @@ $('#add-form').addEventListener('submit', (e) => {
   runAdd();
 });
 $('#photo-input').addEventListener('change', onPhotosPicked);
+$('#talk-row').hidden = !canListen();
+$('#talk-btn').addEventListener('click', startTalking);
+$('#add-dialog').addEventListener('close', () => ui.listening?.());
+$('#talk-stop').addEventListener('click', stopSpeaking);
 
 $('#recipe-search').addEventListener('input', renderRecipes);
 $('#ingredient-search').addEventListener('input', renderIngredients);
@@ -1285,12 +1374,24 @@ document.addEventListener('visibilitychange', () => {
 const AI_LABELS = { ready: 'AI ready', down: 'AI down', off: 'AI off', checking: 'Checking the AI…' };
 let aiTimer;
 
-function showAiStatus(state, detail = '') {
-  const el = $('#ai-status');
+const VOICE_LABELS = { ready: 'AI voice ready', down: 'AI voice down', off: 'AI voice off', checking: 'Checking the AI voice…' };
+
+function showStatus(id, labels, state, detail = '') {
+  const el = $(`#${id}`);
   el.dataset.state = state;
-  el.title = detail ? `${AI_LABELS[state]}: ${detail}` : AI_LABELS[state];
-  $('#ai-status-text').textContent = el.title;
+  el.title = detail ? `${labels[state]}: ${detail}` : labels[state];
+  $(`#${id}-text`).textContent = el.title;
   el.hidden = false;
+}
+
+function showAiStatus(state, detail = '') {
+  showStatus('ai-status', AI_LABELS, state, detail);
+}
+
+function showVoiceStatus(state, detail = '') {
+  // Back up: let "Read aloud" try it again straight away.
+  if (state === 'ready' && $('#voice-status').dataset.state !== 'ready') retryServerVoice();
+  showStatus('voice-status', VOICE_LABELS, state, detail);
 }
 
 // Asks the server every minute while the page is open; the server keeps its
@@ -1298,10 +1399,12 @@ function showAiStatus(state, detail = '') {
 async function checkAi() {
   clearTimeout(aiTimer);
   try {
-    const { state, detail } = await api('/api/ai/status');
+    const { state, detail, voice } = await api('/api/ai/status');
     showAiStatus(state, detail);
+    if (voice) showVoiceStatus(voice.state, voice.detail);
   } catch (err) {
     showAiStatus('down', `couldn't ask Recipe Board (${err.message})`);
+    showVoiceStatus('down', `couldn't ask Recipe Board (${err.message})`);
   }
   if (document.visibilityState === 'visible') aiTimer = setTimeout(checkAi, 60_000);
 }
@@ -1309,6 +1412,11 @@ async function checkAi() {
 $('#ai-status').addEventListener('click', () => {
   toast($('#ai-status').title);
   showAiStatus('checking');
+  checkAi();
+});
+$('#voice-status').addEventListener('click', () => {
+  toast($('#voice-status').title);
+  showVoiceStatus('checking');
   checkAi();
 });
 document.addEventListener('visibilitychange', () => {

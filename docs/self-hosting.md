@@ -133,6 +133,12 @@ drive or cloud storage.
 | `AI_TIMEOUT_SECONDS` | `50` | How long one photo may take |
 | `AI_DAILY_LIMIT` | `40` | AI requests per person per day |
 | `CF_ACCOUNT_ID`, `CF_API_TOKEN` | | Only for `AI_PROVIDER=cloudflare` (Workers AI over its API) |
+| `TTS_BASE_URL` | off | Voice server for "Talk" and "Read aloud", e.g. `http://host.docker.internal:7867` (Index-TTS app) |
+| `TTS_PROVIDER` | `indextts` when `TTS_BASE_URL` is set | `indextts` (its Gradio WebUI), `openai` (any `/v1/audio/speech` server), or `none` |
+| `TTS_VOICE_FILE` | `/data/voice.wav` | The voice Index-TTS copies (see below) |
+| `TTS_LANG` | `EN` | Language of the text, for Index-TTS versions that ask |
+| `TTS_TIMEOUT_SECONDS` | `120` | How long one piece of speech may take |
+| `TTS_API_KEY`, `TTS_MODEL`, `TTS_VOICE` | | Only for `TTS_PROVIDER=openai` |
 
 To try a different local model, run `docker exec recipe-board-ollama ollama pull <model>`
 and change `AI_MODEL` / `AI_VISION_MODEL`. Larger models (for example
@@ -149,6 +155,34 @@ request logs `AI error (...)` with the reason from the AI server. The usual ones
 - `model qwen2.5vl:7b not found`: the download never finished. Run
   `docker exec recipe-board-ollama ollama pull qwen2.5vl:7b`.
 - `500: ... memory`: the model doesn't fit. Use a smaller model or check the GPU.
+
+## Talk and read aloud
+
+In **Add recipe → Ask AI**, the **Talk** button listens to what you'd like to
+cook, makes the recipe, and reads it back. Every recipe also has a **Read
+aloud** button. Listening is done by the browser (Chrome, Edge and Safari; it
+needs the https address, since browsers block the microphone on plain http).
+
+Reading uses the **Index-TTS (Nvidia GPU)** app from the ZimaOS App Store when
+it is set up, and the browser's own voice otherwise, so these work either way.
+To use Index-TTS:
+
+1. Install the app. It publishes its WebUI on port 7867.
+2. Index-TTS speaks in the voice of a short recording. Put a clear 5 to 15
+   second WAV of one person talking (no music) at
+   `/DATA/AppData/recipe-board/data/voice.wav`. Replace the file any time to
+   change the voice.
+3. Add `TTS_BASE_URL: http://host.docker.internal:7867` to the app's settings
+   and restart it. The log says `Talk voice ready at ...` or why not.
+
+The **Voice** dot at the top, next to **AI**, shows whether Index-TTS is
+ready: green when it is, red when it can't be reached or the voice file is
+missing, and grey when it isn't set up. Tap it to see why.
+
+Index-TTS and the Ollama model share the 3060's 12 GB. If either reports a
+memory error, stop the one you are not using, or use a smaller AI model. When
+Index-TTS fails, the app quietly uses the browser voice for five minutes and
+then tries again; `docker logs recipe-board` shows `TTS error: ...`.
 
 ## Run it without Docker
 

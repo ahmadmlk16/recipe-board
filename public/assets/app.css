@@ -119,6 +119,12 @@ body::before {
 .top-actions { display: flex; align-items: center; gap: 4px; }
 /* AI status dot: green ready, red down, grey while checking or when AI is off. */
 .ai-status { gap: 7px; padding: 0 10px; color: var(--muted); font-size: 0.85rem; }
+@media (max-width: 440px) {
+  .brand { gap: 8px; font-size: 1.05rem; white-space: nowrap; }
+  .top-actions { gap: 0; }
+  .top-actions .btn { padding-inline: 6px; }
+  .ai-status { gap: 5px; }
+}
 .ai-dot {
   width: 10px; height: 10px; border-radius: 50%; flex: none;
   background: var(--muted); box-shadow: 0 0 0 3px color-mix(in oklab, var(--muted) 22%, transparent);
@@ -421,6 +427,25 @@ input[type="checkbox"] { width: 20px; height: 20px; min-height: 0; margin: 0; ac
   width: 34px; height: 26px; border: 2.5px solid var(--accent); border-radius: 7px; position: relative;
 }
 .photo-pick-icon::after { content: ""; position: absolute; inset: 0; margin: auto; width: 10px; height: 10px; border: 2.5px solid var(--accent); border-radius: 50%; }
+/* Talk: speak a request in "Ask AI", hear recipes read aloud. */
+.talk-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 10px; }
+.talk-btn { display: inline-flex; align-items: center; gap: 8px; }
+.talk-btn.is-listening { background: var(--tomato); border-color: var(--tomato); color: #fff; }
+.mic-icon { width: 12px; height: 18px; border: 2.5px solid currentColor; border-radius: 7px; position: relative; flex: none; }
+.mic-icon::after { content: ""; position: absolute; left: 50%; bottom: -7px; width: 2.5px; height: 5px; margin-left: -1.25px; background: currentColor; }
+.talk-btn.is-listening .mic-icon { animation: ai-pulse 1s ease-in-out infinite; }
+.talk-bar {
+  position: fixed; left: 50%; transform: translateX(-50%);
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px)); z-index: 19;
+  display: flex; align-items: center; gap: 10px; max-width: calc(100vw - 32px);
+  padding: 8px 8px 8px 16px; border-radius: 999px;
+  background: var(--surface); color: var(--ink); border: 1px solid var(--line);
+  font-weight: 700; box-shadow: 0 6px 24px rgb(0 0 0 / 0.18);
+}
+.talk-bar #talk-bar-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.talk-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; background: var(--accent); animation: ai-pulse 1.2s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .talk-dot, .talk-btn.is-listening .mic-icon { animation: none; } }
+body:has(.toast:not([hidden])) .talk-bar { bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
 .photo-thumbs { display: flex; gap: 8px; flex-wrap: wrap; }
 .photo-thumbs:empty { display: none; }
 .thumb { position: relative; margin: 0; width: 96px; height: 120px; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--line); }

@@ -7,6 +7,7 @@ const CATEGORIES = ['Breakfast', 'Lunch', 'Dinner', 'Dessert', 'Snack', 'Drink',
 const AISLES = ['produce', 'meat', 'dairy', 'bakery', 'pantry', 'spices', 'frozen', 'other'];
 
 function num(value, max) {
+  if (value == null || value === '') return null; // Number(null) is 0: "salt to taste" became "0 salt to taste"
   const n = Number(value);
   return Number.isFinite(n) && n >= 0 && n <= max ? Math.round(n * 1000) / 1000 : null;
 }
