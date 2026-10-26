@@ -1,12 +1,13 @@
 /* Recipe Board. Layout: a sticky three-step flow (recipes → ingredients → grocery)
    over one working area; recipes use a list + detail split on wide screens. */
 :root {
-  --bg: #eef1ea;
-  --surface: #fbfcf8;
-  --sunken: #e3e8de;
-  --ink: #1c2920;
-  --muted: #5b685f;
-  --line: #d0d8cb;
+  /* Neutrals are tinted from --accent, so each accent recolours the whole page. */
+  --bg: color-mix(in oklab, var(--accent) 6%, #f6f6f3);
+  --surface: color-mix(in oklab, var(--accent) 2%, #fefefc);
+  --sunken: color-mix(in oklab, var(--accent) 8%, #ecece8);
+  --ink: color-mix(in oklab, var(--accent) 12%, #1c1c1c);
+  --muted: color-mix(in oklab, var(--accent) 18%, #5a5a58);
+  --line: color-mix(in oklab, var(--accent) 12%, #dadad5);
   --accent: #2f6b4f;
   --accent-ink: #ffffff;
   --accent-soft: #d6e8dc;
@@ -23,12 +24,12 @@
 /* Dark: follows the device unless Account → Appearance picks Light or Dark. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #131915;
-    --surface: #1b231e;
-    --sunken: #171e19;
-    --ink: #e6ece5;
-    --muted: #9aa89f;
-    --line: #2d3a32;
+    --bg: color-mix(in oklab, var(--accent) 9%, #0f100f);
+    --surface: color-mix(in oklab, var(--accent) 10%, #171817);
+    --sunken: color-mix(in oklab, var(--accent) 9%, #131413);
+    --ink: color-mix(in oklab, var(--accent) 6%, #e9e9e7);
+    --muted: color-mix(in oklab, var(--accent) 18%, #9c9c99);
+    --line: color-mix(in oklab, var(--accent) 16%, #2e2f2e);
     --accent: #72c497;
     --accent-ink: #0d1a12;
     --accent-soft: #23392c;
@@ -40,12 +41,12 @@
   }
 }
 :root[data-theme="dark"] {
-  --bg: #131915;
-  --surface: #1b231e;
-  --sunken: #171e19;
-  --ink: #e6ece5;
-  --muted: #9aa89f;
-  --line: #2d3a32;
+  --bg: color-mix(in oklab, var(--accent) 9%, #0f100f);
+  --surface: color-mix(in oklab, var(--accent) 10%, #171817);
+  --sunken: color-mix(in oklab, var(--accent) 9%, #131413);
+  --ink: color-mix(in oklab, var(--accent) 6%, #e9e9e7);
+  --muted: color-mix(in oklab, var(--accent) 18%, #9c9c99);
+  --line: color-mix(in oklab, var(--accent) 16%, #2e2f2e);
   --accent: #72c497;
   --accent-ink: #0d1a12;
   --accent-soft: #23392c;
@@ -57,7 +58,7 @@
 }
 
 /* Accent colours (Account → Appearance). */
-:root[data-accent="saffron"] { --accent: #99600c; --accent-ink: #ffffff; --accent-soft: #f5e5c4; }
+:root[data-accent="saffron"] { --accent: #925b0a; --accent-ink: #ffffff; --accent-soft: #f5e5c4; }
 :root[data-accent="tomato"] { --accent: #b23f2c; --accent-ink: #ffffff; --accent-soft: #f6dcd5; }
 :root[data-accent="ocean"] { --accent: #25628a; --accent-ink: #ffffff; --accent-soft: #d5e5f0; }
 :root[data-accent="plum"] { --accent: #7a4673; --accent-ink: #ffffff; --accent-soft: #ecdbe9; }
