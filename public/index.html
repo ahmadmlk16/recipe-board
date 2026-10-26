@@ -13,7 +13,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
 <script>try{var d=document.documentElement,t=localStorage.getItem('rb-theme'),a=localStorage.getItem('rb-accent');if(t)d.dataset.theme=t;if(a)d.dataset.accent=a}catch(e){}</script>
-<link rel="stylesheet" href="/assets/app.css?v=4">
+<link rel="stylesheet" href="/assets/app.css?v=5">
 </head>
 <body>
 <header class="top">
@@ -25,6 +25,9 @@
     <div class="top-actions">
       <button class="btn btn-ghost ai-status" id="ai-status" type="button" data-state="checking" title="Checking the AI…" hidden>
         <span class="ai-dot" aria-hidden="true"></span><span>AI</span><span class="sr-only" id="ai-status-text">Checking the AI…</span>
+      </button>
+      <button class="btn btn-ghost ai-status" id="voice-status" type="button" data-state="checking" title="Checking the AI voice…" hidden>
+        <span class="ai-dot" aria-hidden="true"></span><span>Voice</span><span class="sr-only" id="voice-status-text">Checking the AI voice…</span>
       </button>
       <button class="btn btn-ghost" id="open-settings" type="button" hidden>Account</button>
     </div>
@@ -227,6 +230,6 @@
   <button type="button" class="btn btn-small" id="talk-stop">Stop</button>
 </div>
 
-<script type="module" src="/assets/app.js?v=4"></script>
+<script type="module" src="/assets/app.js?v=5"></script>
 </body>
 </html>

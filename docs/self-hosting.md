@@ -175,6 +175,10 @@ To use Index-TTS:
 3. Add `TTS_BASE_URL: http://host.docker.internal:7867` to the app's settings
    and restart it. The log says `Talk voice ready at ...` or why not.
 
+The **Voice** dot at the top, next to **AI**, shows whether Index-TTS is
+ready: green when it is, red when it can't be reached or the voice file is
+missing, and grey when it isn't set up. Tap it to see why.
+
 Index-TTS and the Ollama model share the 3060's 12 GB. If either reports a
 memory error, stop the one you are not using, or use a smaller AI model. When
 Index-TTS fails, the app quietly uses the browser voice for five minutes and

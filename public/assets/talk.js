@@ -19,6 +19,11 @@ let session = null; // { cancelled, onState }
 export const canListen = () => !!Recognition;
 export const isSpeaking = () => !!session;
 
+/** The voice server is back: use it again without waiting out the pause. */
+export function retryServerVoice() {
+  serverOffUntil = 0;
+}
+
 /** Call from a click handler, before anything async, so audio may play later. */
 export function unlockAudio() {
   player.src = SILENCE;
