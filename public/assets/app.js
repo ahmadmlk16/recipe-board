@@ -1280,6 +1280,42 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && !ui.editing) refresh();
 });
 
+/* -------------------------------- AI status ------------------------------- */
+
+const AI_LABELS = { ready: 'AI ready', down: 'AI down', off: 'AI off', checking: 'Checking the AI…' };
+let aiTimer;
+
+function showAiStatus(state, detail = '') {
+  const el = $('#ai-status');
+  el.dataset.state = state;
+  el.title = detail ? `${AI_LABELS[state]}: ${detail}` : AI_LABELS[state];
+  $('#ai-status-text').textContent = el.title;
+  el.hidden = false;
+}
+
+// Asks the server every minute while the page is open; the server keeps its
+// answer for 30 seconds, so several open tabs don't pile up checks.
+async function checkAi() {
+  clearTimeout(aiTimer);
+  try {
+    const { state, detail } = await api('/api/ai/status');
+    showAiStatus(state, detail);
+  } catch (err) {
+    showAiStatus('down', `couldn't ask Recipe Board (${err.message})`);
+  }
+  if (document.visibilityState === 'visible') aiTimer = setTimeout(checkAi, 60_000);
+}
+
+$('#ai-status').addEventListener('click', () => {
+  toast($('#ai-status').title);
+  showAiStatus('checking');
+  checkAi();
+});
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && S.user) checkAi();
+  else clearTimeout(aiTimer);
+});
+
 /* ---------------------------------- Start --------------------------------- */
 
 (async () => {
@@ -1292,6 +1328,8 @@ document.addEventListener('visibilitychange', () => {
     }
     S.user = user;
     $('#open-settings').hidden = false;
+    showAiStatus('checking');
+    checkAi();
     await loadState();
   } catch (err) {
     $('#loading').textContent = `Couldn't load your board: ${err.message}`;

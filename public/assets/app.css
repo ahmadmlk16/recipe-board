@@ -15,6 +15,7 @@
   --saffron-soft: #f7e6bd;
   --tomato: #be4430;
   --tomato-soft: #f6dcd5;
+  --ok: #2f8a55;
   --font-display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", system-ui, sans-serif;
   --font-body: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
@@ -37,6 +38,7 @@
     --saffron-soft: #3d3220;
     --tomato: #f07a62;
     --tomato-soft: #3e231e;
+    --ok: #5fcf8d;
     color-scheme: dark;
   }
 }
@@ -54,6 +56,7 @@
   --saffron-soft: #3d3220;
   --tomato: #f07a62;
   --tomato-soft: #3e231e;
+  --ok: #5fcf8d;
   color-scheme: dark;
 }
 
@@ -113,6 +116,19 @@ body::before {
 }
 .top-inner { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-block: 10px 6px; }
 .brand { display: inline-flex; align-items: center; gap: 10px; color: var(--ink); text-decoration: none; font: 700 1.2rem var(--font-display); }
+.top-actions { display: flex; align-items: center; gap: 4px; }
+/* AI status dot: green ready, red down, grey while checking or when AI is off. */
+.ai-status { gap: 7px; padding: 0 10px; color: var(--muted); font-size: 0.85rem; }
+.ai-dot {
+  width: 10px; height: 10px; border-radius: 50%; flex: none;
+  background: var(--muted); box-shadow: 0 0 0 3px color-mix(in oklab, var(--muted) 22%, transparent);
+}
+.ai-status[data-state="ready"] .ai-dot { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in oklab, var(--ok) 25%, transparent); }
+.ai-status[data-state="down"] { color: var(--tomato); }
+.ai-status[data-state="down"] .ai-dot { background: var(--tomato); box-shadow: 0 0 0 3px color-mix(in oklab, var(--tomato) 25%, transparent); }
+.ai-status[data-state="checking"] .ai-dot { animation: ai-pulse 1.2s ease-in-out infinite; }
+@keyframes ai-pulse { 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) { .ai-status[data-state="checking"] .ai-dot { animation: none; } }
 .flow { display: flex; align-items: center; gap: 6px; padding-block: 4px 10px; overflow-x: auto; scrollbar-width: none; }
 .flow-step {
   display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto;

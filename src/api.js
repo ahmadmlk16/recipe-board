@@ -13,7 +13,7 @@ import {
   COOKIE,
 } from './auth.js';
 import { db } from './db.js';
-import { generate, importFromUrl, parseText, readPhotos } from './ai.js';
+import { aiStatus, generate, importFromUrl, parseText, readPhotos } from './ai.js';
 import { cleanGrocery, cleanRecipe } from './recipes.js';
 import { HttpError, clientIp, fail, isEmail, json, now, parseCookies, readJson, sha256, str } from './util.js';
 
@@ -266,6 +266,11 @@ async function aiAllowance(env, user) {
   await rateLimit(env, key, Number(env.AI_DAILY_LIMIT) || 40, 86400);
   await recordAttempt(env, key);
 }
+
+route('GET', '/api/ai/status', async ({ request, env }) => {
+  await requireUser(request, env);
+  return json(await aiStatus(env));
+});
 
 route('POST', '/api/ai/import', async ({ request, env }) => {
   const user = await requireUser(request, env);
