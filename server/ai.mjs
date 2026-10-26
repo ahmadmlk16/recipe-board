@@ -109,9 +109,9 @@ function openai(env) {
       return { response: await streamChat(`${base}/chat/completions`, headers, body) };
     },
     // Run at startup so the log says straight away if the AI server is down or
-    // the model was never downloaded.
+    // the model was never downloaded, and for the status dot in the header.
     async check() {
-      const res = await send(`${base}/models`, { headers });
+      const res = await send(`${base}/models`, { headers, signal: AbortSignal.timeout(5000) });
       if (!res.ok) throw new Error(`${res.status} from ${base}/models: ${(await res.text()).slice(0, 200)}`);
       const ids = ((await res.json())?.data || []).map((m) => m.id);
       const missing = [...new Set([env.AI_MODEL, env.AI_VISION_MODEL])].filter((m) => !ids.includes(m));
@@ -189,6 +189,13 @@ function anthropic(env) {
         },
       );
       return { response: (data?.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('') };
+    },
+    async check() {
+      const res = await send(`${base}/v1/models?limit=1`, {
+        headers: { 'x-api-key': env.AI_API_KEY, 'anthropic-version': '2023-06-01' },
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!res.ok) throw new Error(`${res.status} from ${base}/v1/models: ${(await res.text()).slice(0, 200)}`);
     },
   };
 }

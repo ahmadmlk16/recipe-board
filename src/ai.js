@@ -373,3 +373,31 @@ function runWithTimeout(env, model, input, ms = (Number(env.AI_TIMEOUT_SECONDS) 
 }
 
 const shortModel = (m) => m.split('/').pop();
+
+/* -------------------------------- AI status ------------------------------- */
+
+// For the status dot in the header. The app asks every minute, so the result
+// is kept for 30 seconds and every caller in that window shares one check.
+// Home-server providers can check() their AI server; the Workers AI binding
+// can't be checked without spending allowance, so it counts as ready.
+const STATUS_TTL = 30_000;
+let lastStatus = null;
+let pendingStatus = null;
+
+export async function aiStatus(env) {
+  if (!env.AI) return { state: 'off', detail: 'AI is not set up.' };
+  if (lastStatus && Date.now() - lastStatus.at < STATUS_TTL) return lastStatus.status;
+  pendingStatus ||= (async () => {
+    let status;
+    try {
+      await env.AI.check?.();
+      status = { state: 'ready', detail: env.AI_MODEL ? `${env.AI_MODEL} is ready.` : 'AI is ready.' };
+    } catch (err) {
+      status = { state: 'down', detail: String(err?.message || err).slice(0, 300) };
+    }
+    lastStatus = { at: Date.now(), status };
+    pendingStatus = null;
+    return status;
+  })();
+  return pendingStatus;
+}
