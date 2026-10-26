@@ -161,6 +161,10 @@ server.listen(port, () => {
   const ai = env.AI ? env.AI_PROVIDER || 'cloudflare' : 'off';
   console.log(`Recipe Board on http://0.0.0.0:${port}  data: ${dataDir}  AI: ${ai}`);
   if (!env.SETUP_KEY) console.log('SETUP_KEY is not set; set it to create the first login.');
+  env.AI?.check?.().then(
+    () => console.log(`AI ready: ${env.AI_MODEL} at ${env.AI_BASE_URL || 'default URL'}`),
+    (err) => console.error(`AI check failed: ${err.message}`),
+  );
 });
 
 function shutdown() {

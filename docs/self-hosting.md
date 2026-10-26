@@ -138,6 +138,18 @@ To try a different local model, run `docker exec recipe-board-ollama ollama pull
 and change `AI_MODEL` / `AI_VISION_MODEL`. Larger models (for example
 `gemma3:12b`) read handwriting better but need most of the 3060's memory.
 
+### When the AI features fail
+
+The app log (`docker logs recipe-board`) says what went wrong. Right after
+start it prints `AI ready: ...` or `AI check failed: ...`, and every failed
+request logs `AI error (...)` with the reason from the AI server. The usual ones:
+
+- `can't reach http://ollama:11434: ENOTFOUND` or `ECONNREFUSED`: the `ollama`
+  container isn't running. Check `docker ps -a` and `docker logs recipe-board-ollama`.
+- `model qwen2.5vl:7b not found`: the download never finished. Run
+  `docker exec recipe-board-ollama ollama pull qwen2.5vl:7b`.
+- `500: ... memory`: the model doesn't fit. Use a smaller model or check the GPU.
+
 ## Run it without Docker
 
 ```

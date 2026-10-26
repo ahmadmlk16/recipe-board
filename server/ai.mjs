@@ -19,8 +19,19 @@ export function makeAi(env) {
   throw new Error(`Unknown AI_PROVIDER "${provider}" (use cloudflare, openai, anthropic or none)`);
 }
 
+// fetch() only says "fetch failed" when the AI server can't be reached; the
+// reason (ENOTFOUND ollama, ECONNREFUSED, ...) is in err.cause.
+async function send(url, init) {
+  try {
+    return await fetch(url, init);
+  } catch (err) {
+    const why = err?.cause?.code || err?.cause?.message || err?.message || String(err);
+    throw new Error(`can't reach ${new URL(url).origin}: ${why}`);
+  }
+}
+
 async function post(url, headers, body) {
-  const res = await fetch(url, {
+  const res = await send(url, {
     method: 'POST',
     headers: { 'content-type': 'application/json', ...headers },
     body: JSON.stringify(body),
@@ -97,13 +108,22 @@ function openai(env) {
       if (input.response_format) body.response_format = { type: 'json_object' };
       return { response: await streamChat(`${base}/chat/completions`, headers, body) };
     },
+    // Run at startup so the log says straight away if the AI server is down or
+    // the model was never downloaded.
+    async check() {
+      const res = await send(`${base}/models`, { headers });
+      if (!res.ok) throw new Error(`${res.status} from ${base}/models: ${(await res.text()).slice(0, 200)}`);
+      const ids = ((await res.json())?.data || []).map((m) => m.id);
+      const missing = [...new Set([env.AI_MODEL, env.AI_VISION_MODEL])].filter((m) => !ids.includes(m));
+      if (missing.length) throw new Error(`model ${missing.join(', ')} not found at ${base} (has: ${ids.join(', ') || 'none'})`);
+    },
   };
 }
 
 // Streams the answer so slow local models (Ollama on a CPU can take minutes
 // per photo) don't hit fetch's five-minute wait for the first byte.
 async function streamChat(url, headers, body) {
-  const res = await fetch(url, {
+  const res = await send(url, {
     method: 'POST',
     headers: { 'content-type': 'application/json', ...headers },
     body: JSON.stringify({ ...body, stream: true }),
