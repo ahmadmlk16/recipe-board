@@ -13,7 +13,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
 <script>try{var d=document.documentElement,t=localStorage.getItem('rb-theme'),a=localStorage.getItem('rb-accent');if(t)d.dataset.theme=t;if(a)d.dataset.accent=a}catch(e){}</script>
-<link rel="stylesheet" href="/assets/app.css?v=3">
+<link rel="stylesheet" href="/assets/app.css?v=4">
 </head>
 <body>
 <header class="top">
@@ -150,6 +150,10 @@
       <label class="field"><span>What would you like to cook?</span>
         <textarea id="ai-prompt" rows="4" placeholder="Chicken karahi for 4, not too spicy&#10;Something with the spinach and paneer I already have&#10;High-protein breakfast under 400 calories"></textarea>
       </label>
+      <div class="talk-row" id="talk-row" hidden>
+        <button type="button" class="btn talk-btn" id="talk-btn" aria-pressed="false"><span class="mic-icon" aria-hidden="true"></span><span id="talk-label">Talk</span></button>
+        <span class="hint" id="talk-hint">Say what you'd like to cook and hear the recipe read back.</span>
+      </div>
     </div>
     <div class="add-pane" data-pane="manual" hidden>
       <p class="hint">Start with a blank recipe and type it in yourself.</p>
@@ -217,7 +221,12 @@
 </dialog>
 
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+<div class="talk-bar" id="talk-bar" role="status" aria-live="polite" hidden>
+  <span class="talk-dot" aria-hidden="true"></span>
+  <span id="talk-bar-text">Reading aloud</span>
+  <button type="button" class="btn btn-small" id="talk-stop">Stop</button>
+</div>
 
-<script type="module" src="/assets/app.js?v=3"></script>
+<script type="module" src="/assets/app.js?v=4"></script>
 </body>
 </html>

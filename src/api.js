@@ -299,3 +299,26 @@ route('POST', '/api/ai/photo', async ({ request, env }) => {
   await aiAllowance(env, user);
   return json(await readPhotos(env, body.images));
 });
+
+/* ---------------------------------- Talk ---------------------------------- */
+
+// Reads text aloud with the home server's voice (server/tts.mjs). The app
+// sends a few sentences at a time so playback starts quickly. Without a voice
+// server the app falls back to the browser's own voice.
+const MAX_SPEECH = 600;
+
+route('POST', '/api/tts', async ({ request, env }) => {
+  await requireUser(request, env);
+  const body = await readJson(request);
+  const text = str(body.text, MAX_SPEECH);
+  if (!text) fail(400, 'Nothing to read.');
+  if (!env.TTS) fail(503, 'No voice server is set up.');
+  let audio;
+  try {
+    audio = await env.TTS.speak(text);
+  } catch (err) {
+    console.error('TTS error:', err?.message || err);
+    fail(502, `The voice server could not read that. (Details: ${String(err?.message || err).slice(0, 200)})`);
+  }
+  return new Response(audio.bytes, { headers: { 'content-type': audio.type, 'cache-control': 'no-store' } });
+});
