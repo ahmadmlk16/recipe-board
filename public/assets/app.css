@@ -119,6 +119,12 @@ body::before {
 .top-actions { display: flex; align-items: center; gap: 4px; }
 /* AI status dot: green ready, red down, grey while checking or when AI is off. */
 .ai-status { gap: 7px; padding: 0 10px; color: var(--muted); font-size: 0.85rem; }
+@media (max-width: 440px) {
+  .brand { gap: 8px; font-size: 1.05rem; white-space: nowrap; }
+  .top-actions { gap: 0; }
+  .top-actions .btn { padding-inline: 6px; }
+  .ai-status { gap: 5px; }
+}
 .ai-dot {
   width: 10px; height: 10px; border-radius: 50%; flex: none;
   background: var(--muted); box-shadow: 0 0 0 3px color-mix(in oklab, var(--muted) 22%, transparent);

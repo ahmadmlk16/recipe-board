@@ -17,7 +17,7 @@ import {
   stepSections,
   titleCase,
 } from './lib.js';
-import { canListen, listen, speak, stopSpeaking, unlockAudio } from './talk.js';
+import { canListen, listen, retryServerVoice, speak, stopSpeaking, unlockAudio } from './talk.js';
 
 const CATEGORIES = ['Breakfast', 'Lunch', 'Dinner', 'Dessert', 'Snack', 'Drink', 'Other'];
 const AISLE_NAME = Object.fromEntries(AISLES);
@@ -1374,12 +1374,24 @@ document.addEventListener('visibilitychange', () => {
 const AI_LABELS = { ready: 'AI ready', down: 'AI down', off: 'AI off', checking: 'Checking the AI…' };
 let aiTimer;
 
-function showAiStatus(state, detail = '') {
-  const el = $('#ai-status');
+const VOICE_LABELS = { ready: 'AI voice ready', down: 'AI voice down', off: 'AI voice off', checking: 'Checking the AI voice…' };
+
+function showStatus(id, labels, state, detail = '') {
+  const el = $(`#${id}`);
   el.dataset.state = state;
-  el.title = detail ? `${AI_LABELS[state]}: ${detail}` : AI_LABELS[state];
-  $('#ai-status-text').textContent = el.title;
+  el.title = detail ? `${labels[state]}: ${detail}` : labels[state];
+  $(`#${id}-text`).textContent = el.title;
   el.hidden = false;
+}
+
+function showAiStatus(state, detail = '') {
+  showStatus('ai-status', AI_LABELS, state, detail);
+}
+
+function showVoiceStatus(state, detail = '') {
+  // Back up: let "Read aloud" try it again straight away.
+  if (state === 'ready' && $('#voice-status').dataset.state !== 'ready') retryServerVoice();
+  showStatus('voice-status', VOICE_LABELS, state, detail);
 }
 
 // Asks the server every minute while the page is open; the server keeps its
@@ -1387,10 +1399,12 @@ function showAiStatus(state, detail = '') {
 async function checkAi() {
   clearTimeout(aiTimer);
   try {
-    const { state, detail } = await api('/api/ai/status');
+    const { state, detail, voice } = await api('/api/ai/status');
     showAiStatus(state, detail);
+    if (voice) showVoiceStatus(voice.state, voice.detail);
   } catch (err) {
     showAiStatus('down', `couldn't ask Recipe Board (${err.message})`);
+    showVoiceStatus('down', `couldn't ask Recipe Board (${err.message})`);
   }
   if (document.visibilityState === 'visible') aiTimer = setTimeout(checkAi, 60_000);
 }
@@ -1398,6 +1412,11 @@ async function checkAi() {
 $('#ai-status').addEventListener('click', () => {
   toast($('#ai-status').title);
   showAiStatus('checking');
+  checkAi();
+});
+$('#voice-status').addEventListener('click', () => {
+  toast($('#voice-status').title);
+  showVoiceStatus('checking');
   checkAi();
 });
 document.addEventListener('visibilitychange', () => {
