@@ -120,6 +120,8 @@ Database tables are created automatically; there are no migrations to run. After
 node dev/server.mjs
 # open http://localhost:8788  (setup key: dev-setup-key)
 # MOCK_AI=1 node dev/server.mjs   answers AI requests with a canned recipe
+# TTS_BASE_URL=http://localhost:7860 node dev/server.mjs   reads aloud with an Index-TTS WebUI
+#                                 (voice sample: .dev-data/voice.wav)
 npm test                          # unit tests
 ```
 
