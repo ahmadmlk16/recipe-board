@@ -197,6 +197,7 @@
 
     <h3>People who can use this board</h3>
     <ul class="people" id="people"></ul>
+    <p class="hint" id="people-oidc" hidden>People sign in with <span data-oidc-name></span>. Give someone an account there and they appear here after their first sign-in.</p>
     <form class="stack" id="add-person">
       <p class="hint">Give someone in your home their own login. Everyone shares the same recipes and grocery list.</p>
       <div class="row2">
@@ -209,6 +210,7 @@
     </form>
 
     <h3>Change your password</h3>
+    <p class="hint" id="password-oidc" hidden>Your password is your <span data-oidc-name></span> one. <a id="oidc-account" target="_blank" rel="noopener">Change it there</a>.</p>
     <form class="stack" id="change-password">
       <label class="field"><span>Current password</span><input name="current" type="password" required autocomplete="current-password"></label>
       <label class="field"><span>New password</span><input name="next" type="password" minlength="8" required autocomplete="new-password"></label>
@@ -230,6 +232,6 @@
   <button type="button" class="btn btn-small" id="talk-stop">Stop</button>
 </div>
 
-<script type="module" src="/assets/app.js?v=5"></script>
+<script type="module" src="/assets/app.js?v=6"></script>
 </body>
 </html>

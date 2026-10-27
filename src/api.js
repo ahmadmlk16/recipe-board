@@ -13,7 +13,7 @@ import {
   COOKIE,
 } from './auth.js';
 import { db } from './db.js';
-import { clearStateCookie, finishLogin, oidcEnabled, oidcName, startLogin } from './oidc.js';
+import { clearStateCookie, finishLogin, oidcAccountUrl, oidcEnabled, oidcName, passwordsEnabled, startLogin } from './oidc.js';
 import { aiStatus, generate, voiceStatus, importFromUrl, parseText, readPhotos } from './ai.js';
 import { cleanGrocery, cleanRecipe } from './recipes.js';
 import { HttpError, clientIp, fail, isEmail, json, now, parseCookies, readJson, sha256, str } from './util.js';
@@ -52,6 +52,19 @@ export async function handleApi(request, env) {
   }
 }
 
+function requirePasswords(env) {
+  if (!passwordsEnabled(env)) fail(403, `Passwords are turned off here. Please use Continue with ${oidcName(env)}.`);
+}
+
+// What the pages need to know about how people sign in.
+function authInfo(env) {
+  return {
+    oidc: oidcEnabled(env) ? oidcName(env) : null,
+    passwords: passwordsEnabled(env),
+    accountUrl: oidcEnabled(env) ? oidcAccountUrl(env) : null,
+  };
+}
+
 function publicUser(u) {
   return { id: u.id, email: u.email, name: u.name };
 }
@@ -60,10 +73,11 @@ function publicUser(u) {
 
 route('GET', '/api/session', async ({ request, env }) => {
   const user = await currentUser(request, env);
-  return json({ user: user ? publicUser(user) : null });
+  return json({ user: user ? publicUser(user) : null, auth: authInfo(env) });
 });
 
 route('POST', '/api/login', async ({ request, env }) => {
+  requirePasswords(env);
   const body = await readJson(request);
   const email = str(body.email, 200).toLowerCase();
   const password = String(body.password || '');
@@ -140,6 +154,7 @@ route('POST', '/api/logout', async ({ request, env }) => {
 
 route('POST', '/api/account/password', async ({ request, env }) => {
   const user = await requireUser(request, env);
+  requirePasswords(env);
   const body = await readJson(request);
   const d = await db(env);
   const row = await d.prepare(`SELECT password_hash FROM users WHERE id = ?1`).bind(user.id).first();
@@ -172,6 +187,7 @@ route('GET', '/api/users', async ({ request, env }) => {
 
 route('POST', '/api/users', async ({ request, env }) => {
   await requireUser(request, env);
+  requirePasswords(env);
   const body = await readJson(request);
   const { name, email } = cleanAccount(body);
   checkNewPassword(body.password);
@@ -214,11 +230,12 @@ route('GET', '/api/setup', async ({ env }) => {
   return json({
     needsSetup: (await userCount(env)) === 0,
     setupKeyConfigured: !!env.SETUP_KEY,
-    oidc: oidcEnabled(env) ? oidcName(env) : null,
+    ...authInfo(env),
   });
 });
 
 route('POST', '/api/setup', async ({ request, env }) => {
+  requirePasswords(env);
   if ((await userCount(env)) > 0) fail(403, 'Setup is already complete. Please log in.');
   if (!env.SETUP_KEY) fail(400, 'SETUP_KEY is not configured in Cloudflare yet.');
   const key = `setup:${clientIp(request)}`;

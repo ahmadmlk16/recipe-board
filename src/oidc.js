@@ -4,8 +4,8 @@
 // audience, expiry, nonce) but its signature is not (OIDC Core 3.1.3.7).
 //
 // Settings: OIDC_ISSUER, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET, and optionally
-// OIDC_NAME (button label) and OIDC_REDIRECT_URI (if the public address
-// can't be worked out from the request).
+// OIDC_NAME (button label), OIDC_REDIRECT_URI (if the public address
+// can't be worked out from the request) and PASSWORD_LOGIN=off.
 import { b64url, fail, randomId } from './util.js';
 
 const STATE_COOKIE = 'rb_oidc';
@@ -13,6 +13,21 @@ const STATE_MAX_AGE = 600; // ten minutes to finish signing in
 
 export function oidcEnabled(env) {
   return !!(env.OIDC_ISSUER && env.OIDC_CLIENT_ID && env.OIDC_CLIENT_SECRET);
+}
+
+// PASSWORD_LOGIN=off leaves the provider as the only way in. It only takes
+// effect while the provider is set up, so nobody gets locked out.
+export function passwordsEnabled(env) {
+  return !(oidcEnabled(env) && /^(0|false|off|no)$/i.test(String(env.PASSWORD_LOGIN || '').trim()));
+}
+
+// Where people change their provider password, e.g. Authentik's user page.
+export function oidcAccountUrl(env) {
+  try {
+    return new URL(env.OIDC_ISSUER).origin;
+  } catch {
+    return null;
+  }
 }
 
 export function oidcName(env) {
