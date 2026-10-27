@@ -7,3 +7,13 @@
 
 /assets/*
   Cache-Control: public, max-age=0, must-revalidate
+
+# Pages always check for a newer copy, so a deploy shows up on the next visit.
+/
+  Cache-Control: no-cache
+/index.html
+  Cache-Control: no-cache
+/login
+  Cache-Control: no-cache
+/login.html
+  Cache-Control: no-cache

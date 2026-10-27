@@ -25,9 +25,19 @@ const MAX_BODY = 12 * 1024 * 1024; // three phone photos plus JSON overhead
 
 fs.mkdirSync(dataDir, { recursive: true });
 const DB = openD1(path.join(dataDir, 'recipe-board.sqlite'));
-const env = { ...process.env, DB };
+const env = { ...process.env, DB, APP_VERSION: appVersion() };
 env.AI = makeAi(env) || undefined;
 env.TTS = makeTts({ ...env, TTS_VOICE_FILE: env.TTS_VOICE_FILE || path.join(dataDir, 'voice.wav') }) || undefined;
+
+// A hash of the files the browser runs, so an open page can tell a deploy happened.
+function appVersion() {
+  const hash = crypto.createHash('sha256');
+  for (const file of fs.readdirSync(pub, { recursive: true }).sort()) {
+    const full = path.join(pub, file);
+    if (fs.statSync(full).isFile()) hash.update(file).update(fs.readFileSync(full));
+  }
+  return hash.digest('hex').slice(0, 12);
+}
 
 /* ------------------------------ Static files ------------------------------ */
 
