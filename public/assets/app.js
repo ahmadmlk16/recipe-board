@@ -1081,6 +1081,24 @@ function applyAppearance() {
   $$('[data-act="set-accent"]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.value === accent)));
 }
 
+// The theme and colour are saved to the person's account; this browser keeps a
+// copy so the page paints in the right colours before the account loads.
+function loadAccountAppearance(prefs) {
+  if (!prefs) {
+    // Nothing saved yet: keep what this browser had and save it to the account.
+    if (readPref('rb-theme', '') || readPref('rb-accent', '')) saveAppearance();
+    return;
+  }
+  writePref('rb-theme', prefs.theme);
+  writePref('rb-accent', prefs.accent);
+  applyAppearance();
+}
+
+function saveAppearance() {
+  const body = { theme: readPref('rb-theme', ''), accent: readPref('rb-accent', '') };
+  api('/api/account/prefs', { method: 'PUT', body }).catch((err) => toast(`Couldn't save your colours: ${err.message}`));
+}
+
 /* --------------------------------- Account -------------------------------- */
 
 async function openSettings() {
@@ -1288,9 +1306,11 @@ document.addEventListener('click', async (e) => {
   } else if (act === 'set-theme') {
     writePref('rb-theme', t.dataset.value);
     applyAppearance();
+    saveAppearance();
   } else if (act === 'set-accent') {
     writePref('rb-accent', t.dataset.value);
     applyAppearance();
+    saveAppearance();
   } else if (act === 'remove-person') {
     try {
       await api(`/api/users/${t.dataset.id}`, { method: 'DELETE' });
@@ -1475,12 +1495,13 @@ addEventListener('pageshow', (e) => {
 (async () => {
   applyAppearance();
   try {
-    const { user, auth } = await api('/api/session');
+    const { user, prefs, auth } = await api('/api/session');
     if (!user) {
       location.href = '/login';
       return;
     }
     S.user = user;
+    loadAccountAppearance(prefs);
     showSignInOptions(auth);
     $('#open-settings').hidden = false;
     showAiStatus('checking');

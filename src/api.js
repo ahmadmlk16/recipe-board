@@ -73,7 +73,7 @@ function publicUser(u) {
 
 route('GET', '/api/session', async ({ request, env }) => {
   const user = await currentUser(request, env);
-  return json({ user: user ? publicUser(user) : null, auth: authInfo(env) });
+  return json({ user: user ? publicUser(user) : null, prefs: user ? await getPrefs(env, user.id) : null, auth: authInfo(env) });
 });
 
 route('POST', '/api/login', async ({ request, env }) => {
@@ -176,6 +176,30 @@ route('POST', '/api/account/password', async ({ request, env }) => {
   return json({ ok: true });
 });
 
+// Each person's theme and colour, kept with their login so every device
+// they sign in on looks the same. null until they first pick one.
+const THEMES = ['', 'light', 'dark'];
+const ACCENTS = ['', 'saffron', 'tomato', 'ocean', 'plum'];
+
+async function getPrefs(env, userId) {
+  const d = await db(env);
+  const row = await d.prepare(`SELECT data FROM docs WHERE coll = 'prefs' AND id = ?1`).bind(String(userId)).first();
+  try {
+    return row ? JSON.parse(row.data) : null;
+  } catch {
+    return null;
+  }
+}
+
+route('PUT', '/api/account/prefs', async ({ request, env }) => {
+  const user = await requireUser(request, env);
+  const body = await readJson(request, 2_000);
+  const theme = THEMES.includes(body.theme) ? body.theme : '';
+  const accent = ACCENTS.includes(body.accent) ? body.accent : '';
+  await putDoc(env, 'prefs', String(user.id), { theme, accent });
+  return json({ ok: true });
+});
+
 // Anyone logged in can give another household member their own login.
 // Everyone shares the same recipes and grocery list.
 route('GET', '/api/users', async ({ request, env }) => {
@@ -207,6 +231,7 @@ route('DELETE', '/api/users/:id', async ({ request, env, params }) => {
   if (id === user.id) fail(400, 'You cannot remove your own login while using it.');
   const d = await db(env);
   await d.prepare(`DELETE FROM users WHERE id = ?1`).bind(id).run();
+  await d.prepare(`DELETE FROM docs WHERE coll = 'prefs' AND id = ?1`).bind(String(id)).run();
   return json({ ok: true });
 });
 
