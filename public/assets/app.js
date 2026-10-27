@@ -1091,6 +1091,19 @@ async function openSettings() {
   }
 }
 
+// With PASSWORD_LOGIN=off on the server, people and passwords are managed in
+// the sign-in provider (Authentik), so hide the forms for them here.
+function showSignInOptions(auth) {
+  if (!auth || auth.passwords !== false) return;
+  $$('[data-oidc-name]').forEach((n) => (n.textContent = auth.oidc));
+  $('#add-person').hidden = true;
+  $('#change-password').hidden = true;
+  $('#people-oidc').hidden = false;
+  $('#password-oidc').hidden = false;
+  if (auth.accountUrl) $('#oidc-account').href = auth.accountUrl;
+  else $('#oidc-account').replaceWith('Change it there.');
+}
+
 function formMsg(form, text, ok) {
   const m = $('.msg', form);
   m.textContent = text;
@@ -1429,12 +1442,13 @@ document.addEventListener('visibilitychange', () => {
 (async () => {
   applyAppearance();
   try {
-    const { user } = await api('/api/session');
+    const { user, auth } = await api('/api/session');
     if (!user) {
       location.href = '/login';
       return;
     }
     S.user = user;
+    showSignInOptions(auth);
     $('#open-settings').hidden = false;
     showAiStatus('checking');
     checkAi();

@@ -141,3 +141,40 @@ test('the login page learns the button name only when it is set up', async () =>
   const start = await handleApi(new Request(`${ORIGIN}/api/oidc/start`), { DB });
   assert.equal(start.status, 404);
 });
+
+test('PASSWORD_LOGIN=off leaves only the provider', async () => {
+  const post = (path, body, env) =>
+    handleApi(
+      new Request(`${ORIGIN}${path}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      }),
+      env,
+    );
+  const env = { ...setup(), PASSWORD_LOGIN: 'off' };
+  const info = await (await handleApi(new Request(`${ORIGIN}/api/setup`), env)).json();
+  assert.equal(info.passwords, false);
+  assert.equal(info.accountUrl, 'https://auth.example.com');
+  assert.equal((await post('/api/login', { email: 'a@example.com', password: 'whatever1' }, env)).status, 403);
+  assert.equal((await post('/api/setup', { setupKey: 'k' }, { ...env, SETUP_KEY: 'k' })).status, 403);
+
+  // Signed in through the provider: can't add password logins or set a password.
+  const seen = fakeProvider({ email: 'a@example.com' });
+  const cookie = sessionCookie(await signIn(env, seen)).split(';')[0];
+  const authed = (path, body) =>
+    handleApi(
+      new Request(`${ORIGIN}${path}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie },
+        body: JSON.stringify(body),
+      }),
+      env,
+    );
+  assert.equal((await authed('/api/users', { name: 'B', email: 'b@example.com', password: 'password1' })).status, 403);
+  assert.equal((await authed('/api/account/password', { current: 'x', next: 'password1' })).status, 403);
+
+  // Without the provider set up, the setting is ignored so nobody is locked out.
+  const plain = await (await handleApi(new Request(`${ORIGIN}/api/setup`), { DB, PASSWORD_LOGIN: 'off' })).json();
+  assert.equal(plain.passwords, true);
+});
