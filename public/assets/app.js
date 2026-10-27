@@ -77,8 +77,16 @@ async function api(path, { method = 'GET', body } = {}) {
     location.href = '/login';
     throw new Error('Please log in.');
   }
-  if (!res.ok) throw new Error(data.error || `Request failed (${res.status}).`);
+  if (!res.ok || data.error) throw new Error(data.error || friendlyStatus(res.status));
   return data;
+}
+
+// Cloudflare's own error pages aren't JSON, so there is no reason to show.
+function friendlyStatus(status) {
+  if ([502, 503, 504, 520, 521, 522, 523, 524].includes(status)) {
+    return `The recipe server didn't answer (${status}). It may be restarting; try again in a minute.`;
+  }
+  return `Request failed (${status}).`;
 }
 
 async function loadState() {
