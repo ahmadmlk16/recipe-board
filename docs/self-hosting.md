@@ -139,6 +139,12 @@ the app; restrict it with the application's bindings if needed). Password
 logins keep working alongside the button. The button only works on the
 address in the redirect URI, not the `http://<zimaos-ip>:8788` one.
 
+To make Authentik the only way in, also set `PASSWORD_LOGIN` = `off`. The
+login page then shows only the button, and Account no longer offers "Add
+person" or "Change your password": people are added in Authentik and change
+their password there. Existing passwords stop working but are kept, so
+removing the setting brings them back.
+
 ## Settings
 
 | Variable | Default | Purpose |
@@ -148,6 +154,7 @@ address in the redirect URI, not the `http://<zimaos-ip>:8788` one.
 | `DATA_DIR` | `/data` | Where the SQLite file lives |
 | `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` | off | Adds a "Continue with …" button; see [Sign in with Authentik](#sign-in-with-authentik) |
 | `OIDC_NAME` | `Authentik` | The name on that button |
+| `PASSWORD_LOGIN` | on | `off` makes the button the only way in (ignored while the `OIDC_*` settings are missing) |
 | `OIDC_REDIRECT_URI` | `<this address>/api/oidc/callback` | Only if the app can't tell its public address |
 | `TRUST_PROXY` | off | Set to `1` behind Cloudflare Tunnel or another proxy so client IPs and HTTPS are seen correctly |
 | `AI_PROVIDER` | `cloudflare` if `CF_*` set, else off | `openai` (Ollama, OpenAI, Gemini, OpenRouter), `anthropic`, `cloudflare`, or `none` |
