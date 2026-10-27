@@ -11,7 +11,6 @@ import crypto from 'node:crypto';
 import { Readable } from 'node:stream';
 import { openD1 } from './d1.mjs';
 import { makeAi } from './ai.mjs';
-import { makeTts } from './tts.mjs';
 import { handleApi } from '../src/api.js';
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
@@ -27,7 +26,6 @@ fs.mkdirSync(dataDir, { recursive: true });
 const DB = openD1(path.join(dataDir, 'recipe-board.sqlite'));
 const env = { ...process.env, DB, APP_VERSION: appVersion() };
 env.AI = makeAi(env) || undefined;
-env.TTS = makeTts({ ...env, TTS_VOICE_FILE: env.TTS_VOICE_FILE || path.join(dataDir, 'voice.wav') }) || undefined;
 
 // A hash of the files the browser runs, so an open page can tell a deploy happened.
 function appVersion() {
@@ -176,10 +174,6 @@ server.listen(port, () => {
   env.AI?.check?.().then(
     () => console.log(`AI ready: ${env.AI_MODEL} at ${env.AI_BASE_URL || 'default URL'}`),
     (err) => console.error(`AI check failed: ${err.message}`),
-  );
-  env.TTS?.check?.().then(
-    () => console.log(`Talk voice ready at ${env.TTS_BASE_URL}`),
-    (err) => console.error(`Talk voice check failed: ${err.message}`),
   );
 });
 

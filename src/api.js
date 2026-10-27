@@ -14,7 +14,7 @@ import {
 } from './auth.js';
 import { db } from './db.js';
 import { clearStateCookie, finishLogin, oidcAccountUrl, oidcEnabled, oidcName, passwordsEnabled, startLogin } from './oidc.js';
-import { aiStatus, generate, voiceStatus, importFromUrl, parseText, readPhotos } from './ai.js';
+import { aiStatus, generate, importFromUrl, parseText, readPhotos } from './ai.js';
 import { cleanGrocery, cleanRecipe } from './recipes.js';
 import { HttpError, clientIp, fail, isEmail, json, now, parseCookies, readJson, sha256, str } from './util.js';
 
@@ -177,9 +177,10 @@ route('POST', '/api/account/password', async ({ request, env }) => {
 });
 
 // Each person's theme and colour, kept with their login so every device
-// they sign in on looks the same. null until they first pick one.
-const THEMES = ['', 'light', 'dark'];
-const ACCENTS = ['', 'saffron', 'tomato', 'ocean', 'plum'];
+// they sign in on looks the same. null until they first pick one; '' means
+// the default (light, Ocean).
+const THEMES = ['', 'auto', 'light', 'dark'];
+const ACCENTS = ['', 'herb', 'saffron', 'tomato', 'ocean', 'plum'];
 
 async function getPrefs(env, userId) {
   const d = await db(env);
@@ -368,9 +369,9 @@ async function aiAllowance(env, user) {
 
 route('GET', '/api/ai/status', async ({ request, env }) => {
   await requireUser(request, env);
-  const [ai, voice] = await Promise.all([aiStatus(env), voiceStatus(env)]);
+  const ai = await aiStatus(env);
   // version lets an open page notice a deploy and reload (public/assets/app.js).
-  return json({ ...ai, voice, version: env.APP_VERSION });
+  return json({ ...ai, version: env.APP_VERSION });
 });
 
 // A home-server model can take minutes to read a photo, longer than
@@ -441,27 +442,4 @@ route('POST', '/api/ai/photo', async ({ request, env }) => {
   const body = await readJson(request, 8_000_000);
   await aiAllowance(env, user);
   return slowJson(() => readPhotos(env, body.images));
-});
-
-/* ---------------------------------- Talk ---------------------------------- */
-
-// Reads text aloud with the home server's voice (server/tts.mjs). The app
-// sends a few sentences at a time so playback starts quickly. Without a voice
-// server the app falls back to the browser's own voice.
-const MAX_SPEECH = 600;
-
-route('POST', '/api/tts', async ({ request, env }) => {
-  await requireUser(request, env);
-  const body = await readJson(request);
-  const text = str(body.text, MAX_SPEECH);
-  if (!text) fail(400, 'Nothing to read.');
-  if (!env.TTS) fail(503, 'No voice server is set up.');
-  let audio;
-  try {
-    audio = await env.TTS.speak(text);
-  } catch (err) {
-    console.error('TTS error:', err?.message || err);
-    fail(502, `The voice server could not read that. (Details: ${String(err?.message || err).slice(0, 200)})`);
-  }
-  return new Response(audio.bytes, { headers: { 'content-type': audio.type, 'cache-control': 'no-store' } });
 });

@@ -401,26 +401,3 @@ export async function aiStatus(env) {
   })();
   return pendingStatus;
 }
-
-// Same for the voice that reads aloud (env.TTS, server/tts.mjs). Without
-// one, or while it is down, the browser's own voice reads instead.
-let lastVoice = null;
-let pendingVoice = null;
-
-export async function voiceStatus(env) {
-  if (!env.TTS) return { state: 'off', detail: "No voice server is set up, so your browser's voice reads aloud." };
-  if (lastVoice && Date.now() - lastVoice.at < STATUS_TTL) return lastVoice.status;
-  pendingVoice ||= (async () => {
-    let status;
-    try {
-      await env.TTS.check?.();
-      status = { state: 'ready', detail: 'Index-TTS is ready.' };
-    } catch (err) {
-      status = { state: 'down', detail: `${String(err?.message || err).slice(0, 300)}. Your browser's voice reads aloud until it's back.` };
-    }
-    lastVoice = { at: Date.now(), status };
-    pendingVoice = null;
-    return status;
-  })();
-  return pendingVoice;
-}

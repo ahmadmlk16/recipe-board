@@ -1,15 +1,12 @@
 // Local test server that mimics Cloudflare Pages + D1 (+ Workers AI) using only Node 22.
 // Usage: node dev/server.mjs  (then open http://localhost:8788, setup key: dev-setup-key)
 //        MOCK_AI=1 node dev/server.mjs   answers AI requests with a canned recipe
-//        TTS_BASE_URL=http://localhost:7860 TTS_VOICE_FILE=voice.wav node dev/server.mjs
-//                                        reads aloud with an Index-TTS WebUI
 // Real deployments do not use this file.
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 import { openD1 } from '../server/d1.mjs';
-import { makeTts } from '../server/tts.mjs';
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 const dataDir = path.join(root, '.dev-data');
@@ -49,8 +46,6 @@ if (process.env.MOCK_AI) {
     },
   };
 }
-
-env.TTS = makeTts({ ...process.env, TTS_VOICE_FILE: process.env.TTS_VOICE_FILE || path.join(dataDir, 'voice.wav') }) || undefined;
 
 /* ----------------------------- Routing ----------------------------- */
 const api = await import(path.join(root, 'functions/api/[[path]].js'));
