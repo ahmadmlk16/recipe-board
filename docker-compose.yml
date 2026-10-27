@@ -26,10 +26,6 @@ services:
       AI_VISION_MODEL: qwen2.5vl:7b # reads recipe photos; same model, so it stays loaded
       AI_TIMEOUT_SECONDS: "120"
       AI_DAILY_LIMIT: "200"
-      # Voice for "Talk" and "Read aloud": the Index-TTS app from the App Store,
-      # copying the voice in /DATA/AppData/recipe-board/data/voice.wav.
-      # Without it the browser's own voice reads. See docs/self-hosting.md.
-      # TTS_BASE_URL: http://host.docker.internal:7867
     labels:
       com.centurylinklabs.watchtower.enable: "true"
     depends_on:

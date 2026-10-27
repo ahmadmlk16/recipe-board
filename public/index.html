@@ -12,8 +12,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
-<script>try{var d=document.documentElement,t=localStorage.getItem('rb-theme'),a=localStorage.getItem('rb-accent');if(t)d.dataset.theme=t;if(a)d.dataset.accent=a}catch(e){}</script>
-<link rel="stylesheet" href="/assets/app.css?v=6">
+<script>try{var d=document.documentElement,t=localStorage.getItem('rb-theme')||'light',a=localStorage.getItem('rb-accent')||'ocean';if(t!='auto')d.dataset.theme=t;if(a!='herb')d.dataset.accent=a}catch(e){d.dataset.theme='light';d.dataset.accent='ocean'}</script>
+<link rel="stylesheet" href="/assets/app.css?v=7">
 </head>
 <body>
 <header class="top">
@@ -25,9 +25,6 @@
     <div class="top-actions">
       <button class="btn btn-ghost ai-status" id="ai-status" type="button" data-state="checking" title="Checking the AI…" hidden>
         <span class="ai-dot" aria-hidden="true"></span><span>AI</span><span class="sr-only" id="ai-status-text">Checking the AI…</span>
-      </button>
-      <button class="btn btn-ghost ai-status" id="voice-status" type="button" data-state="checking" title="Checking the AI voice…" hidden>
-        <span class="ai-dot" aria-hidden="true"></span><span>Voice</span><span class="sr-only" id="voice-status-text">Checking the AI voice…</span>
       </button>
       <button class="btn btn-ghost" id="open-settings" type="button" hidden>Account</button>
     </div>
@@ -153,10 +150,6 @@
       <label class="field"><span>What would you like to cook?</span>
         <textarea id="ai-prompt" rows="4" placeholder="Chicken karahi for 4, not too spicy&#10;Something with the spinach and paneer I already have&#10;High-protein breakfast under 400 calories"></textarea>
       </label>
-      <div class="talk-row" id="talk-row" hidden>
-        <button type="button" class="btn talk-btn" id="talk-btn" aria-pressed="false"><span class="mic-icon" aria-hidden="true"></span><span id="talk-label">Talk</span></button>
-        <span class="hint" id="talk-hint">Say what you'd like to cook and hear the recipe read back.</span>
-      </div>
     </div>
     <div class="add-pane" data-pane="manual" hidden>
       <p class="hint">Start with a blank recipe and type it in yourself.</p>
@@ -181,15 +174,15 @@
     <h3>Appearance</h3>
     <div class="appearance">
       <div class="segmented" role="group" aria-label="Theme">
-        <button type="button" data-act="set-theme" data-value="" aria-pressed="true">Match device</button>
-        <button type="button" data-act="set-theme" data-value="light" aria-pressed="false">Light</button>
+        <button type="button" data-act="set-theme" data-value="auto" aria-pressed="false">Match device</button>
+        <button type="button" data-act="set-theme" data-value="light" aria-pressed="true">Light</button>
         <button type="button" data-act="set-theme" data-value="dark" aria-pressed="false">Dark</button>
       </div>
       <div class="swatches" role="group" aria-label="Colour">
-        <button type="button" class="swatch" title="Herb green" data-act="set-accent" data-value="" style="--sw:#2f6b4f" aria-pressed="true"><span class="sr-only">Herb green</span></button>
+        <button type="button" class="swatch" title="Herb green" data-act="set-accent" data-value="herb" style="--sw:#2f6b4f" aria-pressed="false"><span class="sr-only">Herb green</span></button>
         <button type="button" class="swatch" title="Saffron" data-act="set-accent" data-value="saffron" style="--sw:#b5760f" aria-pressed="false"><span class="sr-only">Saffron</span></button>
         <button type="button" class="swatch" title="Tomato" data-act="set-accent" data-value="tomato" style="--sw:#b23f2c" aria-pressed="false"><span class="sr-only">Tomato</span></button>
-        <button type="button" class="swatch" title="Ocean" data-act="set-accent" data-value="ocean" style="--sw:#25628a" aria-pressed="false"><span class="sr-only">Ocean</span></button>
+        <button type="button" class="swatch" title="Ocean" data-act="set-accent" data-value="ocean" style="--sw:#25628a" aria-pressed="true"><span class="sr-only">Ocean</span></button>
         <button type="button" class="swatch" title="Plum" data-act="set-accent" data-value="plum" style="--sw:#7a4673" aria-pressed="false"><span class="sr-only">Plum</span></button>
       </div>
       <p class="hint">Saved on this device.</p>
@@ -226,12 +219,7 @@
 </dialog>
 
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
-<div class="talk-bar" id="talk-bar" role="status" aria-live="polite" hidden>
-  <span class="talk-dot" aria-hidden="true"></span>
-  <span id="talk-bar-text">Reading aloud</span>
-  <button type="button" class="btn btn-small" id="talk-stop">Stop</button>
-</div>
 
-<script type="module" src="/assets/app.js?v=6"></script>
+<script type="module" src="/assets/app.js?v=7"></script>
 </body>
 </html>

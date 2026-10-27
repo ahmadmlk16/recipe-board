@@ -8,8 +8,8 @@
 <link rel="icon" href="/assets/icon.svg" type="image/svg+xml">
 <link rel="manifest" href="/manifest.webmanifest">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
-<script>try{var d=document.documentElement,t=localStorage.getItem('rb-theme'),a=localStorage.getItem('rb-accent');if(t)d.dataset.theme=t;if(a)d.dataset.accent=a}catch(e){}</script>
-<link rel="stylesheet" href="/assets/app.css?v=6">
+<script>try{var d=document.documentElement,t=localStorage.getItem('rb-theme')||'light',a=localStorage.getItem('rb-accent')||'ocean';if(t!='auto')d.dataset.theme=t;if(a!='herb')d.dataset.accent=a}catch(e){d.dataset.theme='light';d.dataset.accent='ocean'}</script>
+<link rel="stylesheet" href="/assets/app.css?v=7">
 </head>
 <body class="auth-page">
 <main class="auth-wrap">
