@@ -162,7 +162,7 @@ main { padding-block: 20px 64px; }
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   min-height: 40px; padding: 0 14px; border-radius: var(--radius);
   border: 1px solid var(--line); background: var(--surface); color: var(--ink);
-  font: 700 0.95rem var(--font-body); cursor: pointer; white-space: nowrap;
+  font: 700 0.95rem var(--font-body); cursor: pointer; white-space: nowrap; text-decoration: none;
 }
 .btn:hover:not(:disabled) { border-color: var(--accent); }
 .btn:disabled { opacity: 0.55; cursor: default; }
@@ -344,6 +344,7 @@ input[type="checkbox"] { width: 20px; height: 20px; min-height: 0; margin: 0; ac
 .auth-wrap { max-width: 420px; padding-block: 12vh 40px; display: grid; gap: 20px; }
 .auth-brand { justify-self: center; font-size: 1.4rem; }
 .auth-card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 24px; }
+.auth-or { text-align: center; margin: 0; font-size: 0.9rem; }
 
 /* ------------------------------- Narrow ---------------------------------- */
 @media (max-width: 800px) {

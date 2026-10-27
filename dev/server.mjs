@@ -18,6 +18,8 @@ fs.mkdirSync(dataDir, { recursive: true });
 const DB = openD1(process.env.DEV_DB || path.join(dataDir, 'd1.sqlite'));
 
 const env = { DB, SETUP_KEY: process.env.SETUP_KEY || 'dev-setup-key' };
+// "Continue with ..." button: OIDC_ISSUER, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET, OIDC_NAME.
+for (const [k, v] of Object.entries(process.env)) if (k.startsWith('OIDC_')) env[k] = v;
 
 /* --------------------------- Workers AI mock -------------------------- */
 if (process.env.MOCK_AI) {

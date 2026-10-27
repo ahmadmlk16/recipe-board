@@ -10,7 +10,7 @@ A private recipe board for the household. Runs on Cloudflare (Worker or Pages, f
 - **Servings**: the − / + buttons rescale every amount (and the grocery list) and remember the size you picked. Units step up as they grow (12 tsp → ¼ cup) and round to kitchen fractions. Amounts written inside the steps are not changed.
 - **Parts**: a recipe can have parts ("## Marinade" in the editor, or "For the sauce:" in pasted text; AI keeps a recipe's parts). Each part gets its own heading and "Add part" button. **Split parts into linked recipes** turns them into their own recipes, linked back to the dish; a recipe can also be "made with" any other recipe (a dough, a chutney). Linked parts show inside the dish and scale with it.
 - **Appearance** (Account): match the device, light or dark, plus five accent colours. Saved per device.
-- **Logins**: the first account is created with a one-time setup key. Anyone logged in can add another person under Account. Everyone shares the same board.
+- **Logins**: the first account is created with a one-time setup key. Anyone logged in can add another person under Account. Everyone shares the same board. Optionally, a **Continue with Authentik** button (any OpenID Connect sign-in) logs people in with their home account; see [Sign in with Authentik](docs/self-hosting.md#sign-in-with-authentik).
 
 ## Branches
 
@@ -38,6 +38,7 @@ src/                 server code
   worker.js          entry point when deployed as a Worker
   api.js             all API endpoints
   auth.js            password hashing (PBKDF2), sessions, rate limiting
+  oidc.js            "Continue with Authentik" (OpenID Connect sign-in)
   db.js              D1 schema (auto-created on first request)
   recipes.js         recipe and grocery item shapes, validated on save
   ai.js              photo, import from link, parse text, generate (Workers AI)
