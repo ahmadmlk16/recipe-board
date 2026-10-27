@@ -13,6 +13,7 @@ import {
   COOKIE,
 } from './auth.js';
 import { db } from './db.js';
+import { clearStateCookie, finishLogin, oidcEnabled, oidcName, startLogin } from './oidc.js';
 import { aiStatus, generate, voiceStatus, importFromUrl, parseText, readPhotos } from './ai.js';
 import { cleanGrocery, cleanRecipe } from './recipes.js';
 import { HttpError, clientIp, fail, isEmail, json, now, parseCookies, readJson, sha256, str } from './util.js';
@@ -78,6 +79,58 @@ route('POST', '/api/login', async ({ request, env }) => {
   await d.prepare(`UPDATE users SET last_login_at = ?1 WHERE id = ?2`).bind(now(), user.id).run();
   const cookie = await createSession(env, request, user.id);
   return json({ user: publicUser(user) }, 200, { 'set-cookie': cookie });
+});
+
+/* ------------------------- Sign in with Authentik ------------------------ */
+
+// Someone whose provider account has the same email as a Recipe Board login
+// signs in to that login. Anyone else the provider lets through gets a new
+// login (the provider decides who may use the app), with no password.
+const NO_PASSWORD = '!';
+
+function redirect(location, cookies) {
+  const headers = new Headers({ location, 'cache-control': 'no-store' });
+  for (const c of cookies) headers.append('set-cookie', c);
+  return new Response(null, { status: 302, headers });
+}
+
+function oidcError(env, err) {
+  if (err instanceof HttpError) return err.message;
+  console.error(err);
+  return `Could not reach ${oidcName(env)}. Please try again.`;
+}
+
+route('GET', '/api/oidc/start', async ({ request, env }) => {
+  if (!oidcEnabled(env)) fail(404, 'Not found');
+  try {
+    const { location, cookie } = await startLogin(env, request);
+    return redirect(location, [cookie]);
+  } catch (err) {
+    return redirect(`/login?error=${encodeURIComponent(oidcError(env, err))}`, []);
+  }
+});
+
+route('GET', '/api/oidc/callback', async ({ request, env, url }) => {
+  if (!oidcEnabled(env)) fail(404, 'Not found');
+  const clear = clearStateCookie(request);
+  let person;
+  try {
+    person = await finishLogin(env, request, url, parseCookies(request).rb_oidc);
+  } catch (err) {
+    return redirect(`/login?error=${encodeURIComponent(oidcError(env, err))}`, [clear]);
+  }
+  const d = await db(env);
+  let user = await d.prepare(`SELECT id FROM users WHERE email = ?1`).bind(person.email).first();
+  if (!user) {
+    const res = await d
+      .prepare(`INSERT INTO users (email, name, password_hash, created_at) VALUES (?1, ?2, ?3, ?4)`)
+      .bind(person.email, person.name || person.email, NO_PASSWORD, now())
+      .run();
+    user = { id: res.meta.last_row_id };
+  }
+  await d.prepare(`UPDATE users SET last_login_at = ?1 WHERE id = ?2`).bind(now(), user.id).run();
+  const cookie = await createSession(env, request, user.id);
+  return redirect('/', [clear, cookie]);
 });
 
 route('POST', '/api/logout', async ({ request, env }) => {
@@ -158,7 +211,11 @@ async function userCount(env) {
 }
 
 route('GET', '/api/setup', async ({ env }) => {
-  return json({ needsSetup: (await userCount(env)) === 0, setupKeyConfigured: !!env.SETUP_KEY });
+  return json({
+    needsSetup: (await userCount(env)) === 0,
+    setupKeyConfigured: !!env.SETUP_KEY,
+    oidc: oidcEnabled(env) ? oidcName(env) : null,
+  });
 });
 
 route('POST', '/api/setup', async ({ request, env }) => {

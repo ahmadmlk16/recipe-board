@@ -9,7 +9,7 @@
 <link rel="manifest" href="/manifest.webmanifest">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
 <script>try{var d=document.documentElement,t=localStorage.getItem('rb-theme'),a=localStorage.getItem('rb-accent');if(t)d.dataset.theme=t;if(a)d.dataset.accent=a}catch(e){}</script>
-<link rel="stylesheet" href="/assets/app.css?v=2">
+<link rel="stylesheet" href="/assets/app.css?v=6">
 </head>
 <body class="auth-page">
 <main class="auth-wrap">
@@ -18,6 +18,10 @@
   <form class="auth-card stack" id="login-form" hidden>
     <h1>Welcome back</h1>
     <p class="msg err" hidden></p>
+    <div class="stack" id="oidc" hidden>
+      <a class="btn btn-primary btn-block" href="/api/oidc/start">Continue with <span id="oidc-name"></span></a>
+      <p class="muted auth-or">or use a Recipe Board password</p>
+    </div>
     <label class="field"><span>Email</span><input name="email" type="email" autocomplete="username" required></label>
     <label class="field"><span>Password</span><input name="password" type="password" autocomplete="current-password" required></label>
     <button class="btn btn-primary btn-block" type="submit">Log in</button>
@@ -45,7 +49,7 @@
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const msg = form.querySelector('.msg');
-      const btn = form.querySelector('button');
+      const btn = form.querySelector('button[type=submit]');
       msg.hidden = true;
       btn.disabled = true;
       try {
@@ -66,9 +70,22 @@
   const session = await fetch('/api/session').then((r) => r.json()).catch(() => ({}));
   if (session.user) location.href = '/';
   const setup = await fetch('/api/setup').then((r) => r.json()).catch(() => ({}));
-  const form = setup.needsSetup ? setupForm : loginForm;
+  const form = setup.needsSetup && !setup.oidc ? setupForm : loginForm;
   form.hidden = false;
-  form.querySelector('input').focus();
+  const error = new URLSearchParams(location.search).get('error');
+  if (error) {
+    const msg = form.querySelector('.msg');
+    msg.textContent = error;
+    msg.hidden = false;
+    history.replaceState(null, '', '/login');
+  }
+  if (setup.oidc && form === loginForm) {
+    document.getElementById('oidc-name').textContent = setup.oidc;
+    document.getElementById('oidc').hidden = false;
+    loginForm.querySelector('button[type=submit]').className = 'btn btn-block';
+  } else {
+    form.querySelector('input').focus();
+  }
 </script>
 </body>
 </html>
