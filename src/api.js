@@ -347,32 +347,74 @@ route('GET', '/api/ai/status', async ({ request, env }) => {
   return json({ ...ai, voice });
 });
 
+// A home-server model can take minutes to read a photo, longer than
+// Cloudflare waits for a reply (100 s), and Cloudflare then answers 502 or 524
+// itself. So the AI routes send their headers straight away and a space every
+// few seconds while the AI works, then the JSON. JSON allows the leading
+// spaces. Errors from here on can't change the status, so they go in the body
+// as { error, status }; the app treats any reply with "error" as a failure.
+// text/event-stream makes Cloudflare and cloudflared pass each space through
+// instead of buffering or compressing the reply.
+const KEEPALIVE_MS = 10_000;
+
+function slowJson(work) {
+  const enc = new TextEncoder();
+  const { readable, writable } = new TransformStream();
+  const writer = writable.getWriter();
+  const ping = () => writer.write(enc.encode(' ')).catch(() => {});
+  ping();
+  const timer = setInterval(ping, KEEPALIVE_MS);
+  (async () => {
+    let body;
+    try {
+      body = await work();
+    } catch (err) {
+      if (err instanceof HttpError) body = { error: err.message, status: err.status };
+      else {
+        console.error(err);
+        body = { error: 'Something went wrong on our end. Please try again.', status: 500 };
+      }
+    } finally {
+      clearInterval(timer);
+    }
+    await writer.write(enc.encode(JSON.stringify(body))).catch(() => {});
+    await writer.close().catch(() => {});
+  })();
+  return new Response(readable, {
+    headers: {
+      'content-type': 'text/event-stream; charset=utf-8',
+      'cache-control': 'no-store, no-transform',
+      'x-accel-buffering': 'no',
+    },
+  });
+}
+
 route('POST', '/api/ai/import', async ({ request, env }) => {
   const user = await requireUser(request, env);
   const body = await readJson(request);
   await aiAllowance(env, user);
-  return json(await importFromUrl(env, body.url));
+  return slowJson(() => importFromUrl(env, body.url));
 });
 
 route('POST', '/api/ai/parse', async ({ request, env }) => {
   const user = await requireUser(request, env);
   const body = await readJson(request, 40_000);
   await aiAllowance(env, user);
-  return json(await parseText(env, body.text));
+  return slowJson(() => parseText(env, body.text));
 });
 
 route('POST', '/api/ai/generate', async ({ request, env }) => {
   const user = await requireUser(request, env);
   const body = await readJson(request);
   await aiAllowance(env, user);
-  return json(await generate(env, body.prompt));
+  return slowJson(() => generate(env, body.prompt));
 });
 
 route('POST', '/api/ai/photo', async ({ request, env }) => {
   const user = await requireUser(request, env);
   const body = await readJson(request, 8_000_000);
   await aiAllowance(env, user);
-  return json(await readPhotos(env, body.images));
+  return slowJson(() => readPhotos(env, body.images));
 });
 
 /* ---------------------------------- Talk ---------------------------------- */
