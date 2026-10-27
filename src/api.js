@@ -344,7 +344,8 @@ async function aiAllowance(env, user) {
 route('GET', '/api/ai/status', async ({ request, env }) => {
   await requireUser(request, env);
   const [ai, voice] = await Promise.all([aiStatus(env), voiceStatus(env)]);
-  return json({ ...ai, voice });
+  // version lets an open page notice a deploy and reload (public/assets/app.js).
+  return json({ ...ai, voice, version: env.APP_VERSION });
 });
 
 // A home-server model can take minutes to read a photo, longer than

@@ -910,7 +910,10 @@ async function shrinkPhoto(file) {
     img.onerror = () => reject(new Error('That file is not a photo this browser can open.'));
     img.src = URL.createObjectURL(file);
   }));
-  const max = 1600;
+  // Ollama's qwen2.5vl needs memory that grows fast with the photo's size;
+  // at 1600 px its process was killed partway through. 1280 px still reads
+  // a cookbook page.
+  const max = 1280;
   const w = src.width;
   const h = src.height;
   const k = Math.min(1, max / Math.max(w, h));
@@ -1420,7 +1423,8 @@ function showVoiceStatus(state, detail = '') {
 async function checkAi() {
   clearTimeout(aiTimer);
   try {
-    const { state, detail, voice } = await api('/api/ai/status');
+    const { state, detail, voice, version } = await api('/api/ai/status');
+    reloadIfUpdated(version);
     showAiStatus(state, detail);
     if (voice) showVoiceStatus(voice.state, voice.detail);
   } catch (err) {
@@ -1443,6 +1447,27 @@ $('#voice-status').addEventListener('click', () => {
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && S.user) checkAi();
   else clearTimeout(aiTimer);
+});
+
+/* ------------------------------- App updates ------------------------------ */
+
+// A phone can keep this page open for days, for example when it is opened
+// from the home page app, so it would keep running old code after a deploy.
+// The status check above carries the server's version; when it changes, reload
+// once nothing would be lost: not while editing a recipe or adding one.
+let loadedVersion = null;
+let updateWaiting = false;
+
+function reloadIfUpdated(version) {
+  if (!version) return;
+  loadedVersion ??= version;
+  if (version !== loadedVersion) updateWaiting = true;
+  if (updateWaiting && !ui.editing && !$('#add-dialog').open) location.reload();
+}
+
+// Safari can show this page from its back/forward cache without running it again.
+addEventListener('pageshow', (e) => {
+  if (e.persisted) location.reload();
 });
 
 /* ---------------------------------- Start --------------------------------- */
