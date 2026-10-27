@@ -116,6 +116,29 @@ Everything lives in `/DATA/AppData/recipe-board/data`. Copy that folder (with
 the app stopped, or copy `recipe-board.sqlite` plus its `-wal` file) to another
 drive or cloud storage.
 
+## Sign in with Authentik
+
+Recipe Board can show a **Continue with Authentik** button, so people sign in
+with the same account as the other home apps. Any OpenID Connect provider
+works (Authentik, Pocket ID, Keycloak…).
+
+1. In Authentik: **Applications** → **Create with provider** → name `Recipes`,
+   slug `recipes` → **OAuth2/OpenID Connect** → client type Confidential,
+   redirect URI (Strict) `https://recipe.yahyamalik.com/api/oidc/callback`,
+   signing key `authentik Self-signed Certificate` → Submit. Copy the Client
+   ID and Client Secret.
+2. In the app's environment (ZimaOS → the app → Settings), add
+   `OIDC_ISSUER` = `https://auth.yahyamalik.com/application/o/recipes/`,
+   `OIDC_CLIENT_ID` and `OIDC_CLIENT_SECRET`, then save.
+3. The login page now shows the button above the password form.
+
+Someone whose Authentik email matches a Recipe Board login signs in to that
+login, so their board stays the same. Anyone else Authentik lets in gets a
+new login on first sign-in, with no password (Authentik decides who may use
+the app; restrict it with the application's bindings if needed). Password
+logins keep working alongside the button. The button only works on the
+address in the redirect URI, not the `http://<zimaos-ip>:8788` one.
+
 ## Settings
 
 | Variable | Default | Purpose |
@@ -123,6 +146,9 @@ drive or cloud storage.
 | `SETUP_KEY` | | One-time key to create the first login |
 | `PORT` | `8788` | Port inside the container |
 | `DATA_DIR` | `/data` | Where the SQLite file lives |
+| `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` | off | Adds a "Continue with …" button; see [Sign in with Authentik](#sign-in-with-authentik) |
+| `OIDC_NAME` | `Authentik` | The name on that button |
+| `OIDC_REDIRECT_URI` | `<this address>/api/oidc/callback` | Only if the app can't tell its public address |
 | `TRUST_PROXY` | off | Set to `1` behind Cloudflare Tunnel or another proxy so client IPs and HTTPS are seen correctly |
 | `AI_PROVIDER` | `cloudflare` if `CF_*` set, else off | `openai` (Ollama, OpenAI, Gemini, OpenRouter), `anthropic`, `cloudflare`, or `none` |
 | `AI_BASE_URL` | OpenAI / Anthropic | e.g. `http://ollama:11434/v1` |
