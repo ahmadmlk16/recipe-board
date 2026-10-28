@@ -8,6 +8,7 @@
 //   AI_PROVIDER=openai      Any OpenAI-compatible API: OpenAI, Gemini, OpenRouter,
 //                           or Ollama on the home server. Needs AI_BASE_URL,
 //                           AI_API_KEY (not for Ollama), AI_MODEL, AI_VISION_MODEL.
+//                           Optional AI_REASONING_EFFORT for thinking models.
 //   AI_PROVIDER=anthropic   Claude. Needs AI_API_KEY, AI_MODEL, AI_VISION_MODEL.
 
 export function makeAi(env) {
@@ -106,6 +107,10 @@ function openai(env) {
       };
       // JSON mode in its most widely supported form; the prompt describes the shape.
       if (input.response_format) body.response_format = { type: 'json_object' };
+      // Thinking models (qwen3.5, gemma4) otherwise spend time and part of
+      // max_tokens on hidden reasoning; "none" turns it off in Ollama. Asks
+      // that benefit from it ("ask AI" recipes) pass think and keep it on.
+      if (env.AI_REASONING_EFFORT && !input.think) body.reasoning_effort = env.AI_REASONING_EFFORT;
       return { response: await streamChat(`${base}/chat/completions`, headers, body) };
     },
     // Run at startup so the log says straight away if the AI server is down or
