@@ -207,27 +207,32 @@ function fromAi(data, sourceUrl = '') {
 
 const isAllowanceError = (err) => /limit|quota|neuron|429/i.test(String(err?.message || ''));
 
-async function askAi(env, userPrompt) {
+// think: let a thinking model reason first (worth it for inventing a recipe,
+// not for copying one out). Only the home server's AI_REASONING_EFFORT turns
+// thinking off, so the flag is only sent there; the reasoning also counts
+// against max_tokens, hence the larger budget.
+async function askAi(env, userPrompt, { think = false } = {}) {
   if (!env.AI) fail(503, 'AI is not connected yet. Add the Workers AI binding named AI in Cloudflare, or set AI_PROVIDER on the home server.');
   const model = env.AI_MODEL || DEFAULT_MODEL;
   const messages = [
     { role: 'system', content: SYSTEM },
     { role: 'user', content: userPrompt },
   ];
+  const opts = think && env.AI_REASONING_EFFORT ? { think: true, max_tokens: 8000 } : { max_tokens: 3000 };
   let result;
   try {
     result = await env.AI.run(model, {
       messages,
       response_format: { type: 'json_schema', json_schema: RECIPE_SCHEMA },
-      max_tokens: 3000,
       temperature: 0.3,
+      ...opts,
     });
   } catch (err) {
     console.error(`AI error (${model}, JSON mode):`, err?.message || err);
     if (isAllowanceError(err)) fail(429, "Today's free AI allowance is used up. It resets at midnight UTC.");
     // Some models refuse JSON mode for some inputs; ask again for plain JSON text.
     try {
-      result = await env.AI.run(model, { messages, max_tokens: 3000, temperature: 0.3 });
+      result = await env.AI.run(model, { messages, temperature: 0.3, ...opts });
     } catch (err2) {
       console.error(`AI error (${model}):`, err2?.message || err2);
       if (isAllowanceError(err2)) fail(429, "Today's free AI allowance is used up. It resets at midnight UTC.");
@@ -295,6 +300,7 @@ export async function generate(env, prompt) {
   const data = await askAi(
     env,
     `Write one reliable, home-kitchen recipe for this request: ${clean}\nUse ingredients found in a normal supermarket.`,
+    { think: true },
   );
   return { recipe: fromAi(data), method: 'ai' };
 }
