@@ -163,6 +163,7 @@ removing the setting brings them back.
 | `AI_MODEL` | | Text model (structuring, "ask AI") |
 | `AI_VISION_MODEL` | | Photo reading model |
 | `AI_VISION_FALLBACK_MODEL` | | Optional second photo model if the first fails |
+| `AI_REASONING_EFFORT` | | For thinking models: `none` skips the hidden reasoning (faster, leaves room for the recipe) |
 | `AI_TIMEOUT_SECONDS` | `50` | How long one photo may take |
 | `AI_DAILY_LIMIT` | `40` | AI requests per person per day |
 | `CF_ACCOUNT_ID`, `CF_API_TOKEN` | | Only for `AI_PROVIDER=cloudflare` (Workers AI over its API) |
