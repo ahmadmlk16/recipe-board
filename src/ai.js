@@ -43,6 +43,7 @@ const RECIPE_SCHEMA = {
 
 const SYSTEM = `You turn recipes into structured JSON for a home cook's recipe board.
 Rules:
+- "name": the recipe's title, e.g. "Chicken biryani". Never leave it empty.
 - "ingredients": one string per ingredient, quantity first, e.g. "2 cups basmati rice", "3 cloves garlic, minced", "salt to taste". Use numbers, not words, for quantities.
 - "steps": short imperative steps in order, without numbering.
 - If the recipe has separate parts (for example a marinade, a sauce, a dough, a raita), put a line "## Part name" before that part's ingredients in "ingredients" and before that part's steps in "steps". Use the same part names in both lists. Leave parts out for simple recipes.
@@ -190,7 +191,8 @@ function fromAi(data, sourceUrl = '') {
   if (!data || typeof data !== 'object') fail(502, 'The AI did not return a recipe. Try rephrasing.');
   const n = data.nutrition || {};
   return {
-    name: str(data.name, 150) || 'Untitled recipe',
+    // Models given plain JSON mode instead of the schema often say "title".
+    name: str(data.name || data.title, 150) || 'Untitled recipe',
     category: CATEGORIES.includes(data.category) ? data.category : 'Other',
     minutes: Number(data.minutes) || null,
     servings: Number(data.servings) || null,
